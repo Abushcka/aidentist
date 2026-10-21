@@ -1,4 +1,4 @@
-<title>AI Dentist</title>
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#16695a"><meta name="description" content="AI Dentist — CRM для стоматологии: запись, сметы со схемой зубов, касса, Telegram-напоминания и ИИ-помощник. Демо-версия."><meta property="og:title" content="AI Dentist — демо CRM для стоматологии"><meta property="og:description" content="Попробуйте систему сами: вымышленная клиника, все функции, без регистрации."><link rel="icon" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="AI Dentist"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>AI Dentist</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: sticky header + tab bar (bottom on phones), working area below; schedule is a time grid with one column per doctor */
@@ -437,6 +437,7 @@ select.f{appearance:none;-webkit-appearance:none;padding-right:34px;
 .who-btn[aria-pressed="true"]{box-shadow:none;background:var(--accent-soft)}
 .who-btn[aria-pressed="true"]::after{content:"";position:absolute;right:16px;top:50%;width:6px;height:11px;margin-top:-7px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
 .demo{background:var(--warn-soft)}
+@media (max-width:600px){.demo-long{display:none}}
 .demo a{color:inherit;font-weight:700;margin-left:10px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
 .demo-entry{max-width:560px;margin:28px auto;padding:0 16px}
 .demo-entry h1{font-size:30px;letter-spacing:-.02em;margin:8px 0 6px}
@@ -512,7 +513,7 @@ select.f{appearance:none;-webkit-appearance:none;padding-right:34px;
 @media (prefers-reduced-motion:reduce){.sheet,.scrim,.toast{animation:fadeIn .2s!important}}
 </style>
 
-<div id="demo" class="demo" hidden><span>Демо-версия · данные вымышленные, сбрасываются при перезагрузке</span> <a href="#" id="demoRole">Сменить роль</a> <a id="demoBuy" target="_blank" rel="noopener">Подключить клинику →</a></div>
+<div id="demo" class="demo" hidden><span>Демо-версия<span class="demo-long"> · данные вымышленные, сбрасываются при перезагрузке</span></span> <a href="#" id="demoRole">Сменить роль</a> <a id="demoBuy" target="_blank" rel="noopener">Подключить клинику →</a></div>
 <header class="top"><div class="top-in">
   <div class="brand">
     <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 3c-3 0-5 2.5-5 6 0 3 1.4 4.6 2 7 .7 2.8 1 7 3 7 2.2 0 2.2-6 6-6s3.8 6 6 6c2 0 2.3-4.2 3-7 .6-2.4 2-4 2-7 0-3.5-2-6-5-6-2.4 0-3.6 1.4-6 1.4S9.4 3 7 3z" fill="var(--accent)"/></svg>
@@ -1767,3 +1768,4 @@ async function start() {
   if (AUTH) guard(start); else showLogin();
 })();
 </script>
+</body></html>

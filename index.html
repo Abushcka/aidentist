@@ -1,0 +1,1769 @@
+<title>AI Dentist</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: sticky header + tab bar (bottom on phones), working area below; schedule is a time grid with one column per doctor */
+:root{
+  --bg:#f3f6f5; --surface:#ffffff; --sunk:#e9efed; --ink:#15211e; --muted:#5b6a65; --line:#d9e1de;
+  --accent:#16695a; --accent-ink:#ffffff; --accent-soft:#dcece7;
+  --ok:#2c7a4b; --ok-soft:#ddefe3; --warn:#a35a12; --warn-soft:#f6e8d6; --bad:#b0302a; --bad-soft:#f7e0de;
+  --shadow:0 10px 30px rgba(18,40,34,.16); --plan:#7c4dff;
+  --f-ui:"Onest",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-display:"Unbounded","Onest",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --slot:44px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1513; --surface:#162019; --sunk:#1d2925; --ink:#e6eeeb; --muted:#93a39d; --line:#2a3833;
+  --accent:#4cb79f; --accent-ink:#06231c; --accent-soft:#1d3a33;
+  --ok:#6fcb92; --ok-soft:#1c3526; --warn:#e3a35f; --warn-soft:#3a2b19; --bad:#ef8a83; --bad-soft:#3d1f1d;
+  --shadow:0 10px 30px rgba(0,0,0,.5); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1513; --surface:#162019; --sunk:#1d2925; --ink:#e6eeeb; --muted:#93a39d; --line:#2a3833;
+  --accent:#4cb79f; --accent-ink:#06231c; --accent-soft:#1d3a33;
+  --ok:#6fcb92; --ok-soft:#1c3526; --warn:#e3a35f; --warn-soft:#3a2b19; --bad:#ef8a83; --bad-soft:#3d1f1d;
+  --shadow:0 10px 30px rgba(0,0,0,.5); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-ui);-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top-in{display:flex;align-items:center;gap:16px;min-height:56px;max-width:1280px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--f-display);font-size:15px;letter-spacing:.01em;white-space:nowrap}
+.brand svg{flex:none}
+.brand-text{display:grid;line-height:1.15;min-width:0}
+.brand-name{font-family:var(--f-display);font-size:16px;letter-spacing:.01em}
+.brand-clinic{font-family:var(--f-ui);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav.tabs{display:flex;gap:4px;margin-left:auto}
+nav.tabs button{border:0;background:none;padding:8px 14px;border-radius:8px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+nav.tabs button[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+nav.tabs svg{width:18px;height:18px}
+.demo{background:var(--warn-soft);color:var(--warn);font-size:13px;padding-block:6px;text-align:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+main{max-width:1280px;margin:0 auto;padding-block:20px 96px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-family:var(--f-display);font-weight:600;font-size:20px;margin:0;text-wrap:balance}
+h2{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:0 0 10px;font-weight:600}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px}
+.grow{flex:1}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 14px;font-weight:500;display:inline-flex;align-items:center;gap:6px;min-height:40px}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{background:none;border-color:transparent}
+.btn.danger{color:var(--bad)}
+.btn.sm{min-height:32px;padding:5px 10px;font-size:14px;border-radius:8px}
+.btn:disabled{opacity:.5;cursor:default}
+.icon-btn{width:40px;height:40px;border:1px solid var(--line);border-radius:10px;background:var(--surface);display:grid;place-items:center}
+input.f,select.f,textarea.f{width:100%;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px 12px;min-height:42px}
+textarea.f{min-height:70px;resize:vertical}
+label.fl{display:grid;gap:5px;font-size:13px;color:var(--muted);font-weight:500}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fgrid .full{grid-column:1/-1}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;display:inline-flex;align-items:center;gap:7px}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px}
+.muted{color:var(--muted)}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+
+/* статусы */
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.s-scheduled{background:var(--sunk);color:var(--muted)}
+.s-confirmed{background:var(--ok-soft);color:var(--ok)}
+.s-done{background:var(--accent-soft);color:var(--accent)}
+.s-cancelled{background:var(--sunk);color:var(--muted);text-decoration:line-through}
+.s-no_show{background:var(--bad-soft);color:var(--bad)}
+.debt{background:var(--bad-soft);color:var(--bad)}
+
+/* расписание */
+.daystrip{display:flex;align-items:center;gap:8px}
+.daylabel{font-weight:600;min-width:150px;text-align:center}
+.summary{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin-bottom:12px}
+.summary b{color:var(--ink);font-weight:600}
+.sched-wrap{overflow:auto;max-height:calc(100dvh - 240px);min-height:320px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+.sched{display:grid;position:relative}
+.sched .hd{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 12px;font-weight:600;z-index:2;display:flex;gap:8px;align-items:center;min-width:0}
+.sched .hd small{color:var(--muted);font-weight:400;display:block;font-size:12px}
+.tcol .tick{height:var(--slot);font-family:var(--f-mono);font-size:12px;color:var(--muted);padding:2px 8px;text-align:right;border-top:1px solid transparent}
+.tcol .tick.h{border-top-color:var(--line);color:var(--ink)}
+.dcol{position:relative;border-left:1px solid var(--line)}
+.dcol .cell{height:var(--slot);border-top:1px dashed var(--line);display:block;width:100%;background:none;border-left:0;border-right:0;border-bottom:0;padding:0}
+.dcol .cell.h{border-top-style:solid}
+.dcol .cell:hover{background:var(--accent-soft)}
+.dcol .cell.past{background:repeating-linear-gradient(135deg,transparent 0 6px,var(--sunk) 6px 7px);cursor:default}
+.appt{position:absolute;left:4px;right:4px;border-radius:9px;padding:5px 8px 5px 11px;text-align:left;border:1px solid var(--line);
+  background:var(--surface);overflow:hidden;display:flex;flex-direction:column;gap:1px;font-size:13px;line-height:1.25;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.appt::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--c)}
+.appt .t{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.appt .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appt .x{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.appt.cancelled{opacity:.45}
+.appt.cancelled .n{text-decoration:line-through}
+.appt.done{background:var(--accent-soft)}
+.appt.no_show{background:var(--bad-soft)}
+.appt .st{position:absolute;right:6px;top:5px}
+.nowline{position:absolute;left:0;right:0;height:2px;background:var(--bad);z-index:1;pointer-events:none}
+
+/* списки */
+.list{display:grid}
+.row{display:flex;align-items:center;gap:12px;padding:12px 14px;border-top:1px solid var(--line);background:none;border-left:0;border-right:0;border-bottom:0;width:100%;text-align:left}
+.row:first-child{border-top:0}
+.row:hover{background:var(--sunk)}
+.row .main{flex:1;min-width:0}
+.row .main b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .main span{font-size:13px;color:var(--muted)}
+.avatar{width:36px;height:36px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-weight:600;flex:none;font-size:14px}
+
+/* отчёты */
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.kpi{padding:14px 16px}
+.kpi .v{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+.kpi .l{font-size:13px;color:var(--muted)}
+.cols{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px}
+.hbar{display:grid;grid-template-columns:minmax(0,140px) 1fr auto;gap:10px;align-items:center;padding:8px 0;font-size:14px}
+.hbar .track{height:10px;background:var(--sunk);border-radius:999px;overflow:hidden}
+.hbar .fill{height:100%;background:var(--c,var(--accent));border-radius:999px}
+.pad{padding:16px}
+
+/* шторка/модалка */
+.scrim{position:fixed;inset:0;background:rgba(10,20,17,.45);z-index:50;display:flex;justify-content:flex-end}
+.sheet{background:var(--bg);width:min(560px,100%);height:100%;overflow-y:auto;overflow-x:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.sheet-hd{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;z-index:2;
+  padding:calc(12px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 12px 16px}
+.sheet-hd h3{margin:0;font-size:17px;flex:1;min-width:0}
+.sheet-bd{grid-template-columns:minmax(0,1fr);padding:16px max(16px,env(safe-area-inset-right,0px)) calc(24px + env(safe-area-inset-bottom,0px)) 16px;display:grid;gap:16px;align-content:start}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:6px 12px;font-size:14px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;min-width:0}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px}
+.slots button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 0;font-family:var(--f-mono);font-size:13px}
+.slots button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.err{color:var(--bad);font-size:14px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(88px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;z-index:80;font-size:14px;max-width:calc(100% - 32px)}
+
+/* зубная формула (FDI) */
+.teeth{display:grid;gap:4px;overflow-x:auto;padding-bottom:4px}
+.jaw{display:grid;grid-template-columns:repeat(16,minmax(19px,1fr));gap:2px;min-width:340px}
+.jaw .mid{border-left:2px solid var(--line)}
+.tooth{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 0;display:grid;justify-items:center;font-size:10px;line-height:1.1;min-height:42px}
+.tooth .no{font-family:var(--f-mono);color:var(--muted)}
+.tooth .mk{font-weight:700;font-size:12px;min-height:14px}
+.tooth[data-s]{border-color:var(--tc);background:color-mix(in srgb,var(--tc) 14%,var(--surface))}
+.tooth[data-s] .mk{color:var(--tc)}
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.legend button{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:4px 8px;font-size:13px;display:flex;gap:6px;align-items:center}
+.legend button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.legend i{font-style:normal;font-weight:700;color:var(--tc)}
+/* сметы */
+.tooth.sel{border-color:var(--plan);background:var(--plan);color:#fff}
+.tooth.sel .no{color:#fff}
+.tooth.inplan:not(.sel){border-color:var(--plan);box-shadow:inset 0 -3px 0 var(--plan)}
+.svc-pick{display:flex;flex-wrap:wrap;gap:6px;max-height:190px;overflow-y:auto;padding:2px}
+.svc-pick button{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:7px 10px;font-size:14px;text-align:left;display:grid;line-height:1.2}
+.svc-pick button small{color:var(--muted);font-size:12px}
+.svc-pick button:hover{border-color:var(--accent);background:var(--accent-soft)}
+.pitem{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;padding:10px 12px;border-top:1px solid var(--line)}
+.pitem:first-child{border-top:0}
+.pitem .nm{font-weight:600;min-width:0}
+.pitem .tt{font-size:12px;color:var(--plan);font-weight:600}
+.pitem .nums{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.pitem .nums input,.pitem .nums select{width:auto;min-height:32px;padding:4px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.pitem .nums input.n{width:52px}.pitem .nums input.pr{width:90px}.pitem .nums input.d{width:52px}
+.pitem .sum{font-weight:700;font-variant-numeric:tabular-nums;text-align:right}
+.stage-hd{display:flex;justify-content:space-between;padding:10px 12px;background:var(--sunk);font-weight:600;font-size:14px}
+.total-box{display:grid;gap:4px;padding:12px 14px;font-size:14px}
+.total-box .big{font-size:20px;font-weight:700}
+.doc-preview{background:#fff;color:#1b2422;border-radius:10px;padding:18px;font-size:13px;line-height:1.45;border:1px solid var(--line)}
+.doc-preview table{width:100%;border-collapse:collapse}.doc-preview td,.doc-preview th{border-bottom:1px solid #d6dedb;padding:4px 3px;text-align:left;vertical-align:top}
+.doc-preview .r{text-align:right}
+/* эскиз зубов */
+.tchart{background:#fff;border:1px solid var(--line);border-radius:12px;padding:6px 4px;overflow-x:auto}
+.tchart svg{min-width:360px}
+.tc-t{cursor:pointer;outline:none}
+.tc-t:focus-visible rect{stroke:#16695a;stroke-width:1.6}
+.tlegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin-top:8px}
+.tlegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.pnum{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;margin-right:8px;vertical-align:1px}
+.doc-preview .tchart{border:0;padding:0}
+.doc-preview .tchart svg{min-width:0}
+.doc-preview td.r,.doc-preview th.r{white-space:nowrap}
+@media (max-width:520px){.doc-preview{padding:12px;font-size:12px}.doc-preview td,.doc-preview th{padding:4px 2px}.doc-preview .pnum{margin-right:2px}}
+.doc-preview .tlegend{color:#1b2422;justify-content:center}
+.dp-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-bottom:1.5px solid #16695a;padding-bottom:6px;color:#16695a}
+.dp-head span{color:#66736f;font-size:11px}
+.dp-title{text-align:center;margin:14px 0 10px;font-size:19px}
+.doc-preview .dp-meta{width:auto}.doc-preview .dp-meta td{border:0;padding:1px 14px 1px 0}.dp-meta td:first-child{color:#66736f}
+.dp-greet{font-weight:700;margin:12px 0 8px}
+.dp-note{font-size:11px;color:#66736f;text-align:center;margin:6px 0 4px}
+.dp-stage{display:flex;justify-content:space-between;font-weight:700;color:#16695a;margin:16px 0 4px;font-size:14px}
+.doc-preview th{font-size:11px;color:#66736f;font-weight:600}
+.dp-tot{display:grid;justify-content:end;gap:2px;margin-top:10px;text-align:right}
+.dp-tot .big{font-size:17px;font-weight:700;border-top:1.5px solid #1b2422;padding-top:4px;margin-top:2px}
+.dp-small{font-size:11.5px;color:#3d4845;margin:10px 0 0}
+.dp-sign{display:grid;grid-template-columns:1fr auto;gap:12px 20px;margin-top:16px;font-size:12px}
+
+.fab{position:fixed;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:30;
+  border:0;border-radius:999px;background:var(--accent);color:var(--accent-ink);padding:12px 18px;font-weight:600;box-shadow:var(--shadow);display:flex;gap:8px;align-items:center}
+.fab svg{width:18px;height:18px}
+.chat{display:grid;gap:10px;align-content:start}
+.msg{max-width:88%;padding:10px 12px;border-radius:14px;white-space:pre-wrap;line-height:1.45;font-size:14.5px}
+.msg.u{justify-self:end;background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:4px}
+.msg.a{justify-self:start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.sys{justify-self:center;background:none;color:var(--muted);font-size:13px;text-align:center}
+.msg .act{display:block;margin-top:6px;font-size:12px;color:var(--ok)}
+.chat-in{position:sticky;bottom:0;background:var(--bg);padding-top:8px;display:flex;gap:8px;align-items:flex-end}
+.chat-in textarea{min-height:44px;max-height:140px}
+.typing{display:inline-flex;gap:4px}.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:blink 1s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,100%{opacity:.25}50%{opacity:1}}
+.dayl{display:grid;gap:10px}
+.dcard{display:grid;grid-template-columns:62px minmax(0,1fr);gap:12px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;border-left:4px solid var(--c)}
+.dcard.done{background:var(--accent-soft)}.dcard.cancelled{opacity:.5}.dcard.no_show{background:var(--bad-soft)}
+.dcard .tm{font-family:var(--f-mono);font-size:15px;font-weight:600}.dcard .tm small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+.dcard .who{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.dcard .who b{font-size:16px}
+.dcard .meta{color:var(--muted);font-size:13px;margin-top:2px}
+.dcard .alert{color:var(--bad);font-size:13px;margin-top:4px}
+.dcard .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:var(--surface);padding:8px 12px;font-weight:500;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.tpl{display:flex;gap:6px;flex-wrap:wrap}
+.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
+.file{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface);display:grid;text-decoration:none;color:inherit;position:relative}
+.file img{width:100%;aspect-ratio:1;object-fit:cover;display:block;max-width:100%}
+.file .ico{aspect-ratio:1;display:grid;place-items:center;font-size:28px;background:var(--sunk)}
+.file span{font-size:11px;padding:4px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.file .del{position:absolute;top:4px;right:4px;border:0;border-radius:6px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:2px 6px}
+.note-card{padding:10px 12px;border-top:1px solid var(--line);display:grid;gap:2px;cursor:pointer;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;width:100%}
+.note-card:first-child{border-top:0}.note-card:hover{background:var(--sunk)}
+.note-card b{font-size:14px}.note-card span{font-size:13px;color:var(--muted)}
+.ai-badge{display:inline-flex;gap:4px;align-items:center;font-size:12px;font-weight:600;color:var(--plan)}
+@media (max-width:760px){.fab{bottom:calc(76px + env(safe-area-inset-bottom,0px));padding:12px 14px}.fab .lb{display:none}}
+.login{max-width:360px;margin:12vh auto 0;padding:24px;display:grid;gap:14px}
+.who-list{display:grid;gap:6px;max-height:46vh;overflow:auto}
+.who-btn{display:flex;align-items:center;gap:10px;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:inherit;font:inherit;cursor:pointer}
+.who-btn .ico{font-size:20px;width:28px;text-align:center}
+.who-btn b{display:block;font-weight:600}.who-btn small{color:var(--muted);font-size:12px}
+.who-btn[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 30%,transparent)}
+
+@media (max-width:760px){
+  nav.tabs{position:fixed;left:0;right:0;bottom:0;margin:0;background:var(--surface);border-top:1px solid var(--line);z-index:20;justify-content:space-around;
+    padding:6px max(8px,env(safe-area-inset-right,0px)) calc(6px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px))}
+  nav.tabs button{flex-direction:column;gap:2px;font-size:11px;padding:6px 8px;flex:1}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols{grid-template-columns:minmax(0,1fr)}
+  .fgrid{grid-template-columns:1fr}
+  .daylabel{min-width:0}
+  .brand span.full{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===================== Apple-style layer (skill: apple-design) ===================== */
+:root{
+  --bg:#f2f2f7; --surface:#ffffff; --sunk:#f2f2f7; --fill:rgba(118,118,128,.12); --fill-2:rgba(118,118,128,.08);
+  --ink:#000000; --muted:rgba(60,60,67,.62); --faint:rgba(60,60,67,.3); --line:rgba(60,60,67,.18);
+  --accent:#0f7a68; --accent-ink:#ffffff; --accent-soft:rgba(15,122,104,.12);
+  --ok:#248a3d; --ok-soft:rgba(52,199,89,.15); --warn:#c45f00; --warn-soft:rgba(255,149,0,.15); --bad:#d70015; --bad-soft:rgba(255,59,48,.12);
+  --shadow:0 8px 30px rgba(0,0,0,.12); --shadow-sm:0 1px 3px rgba(0,0,0,.08),0 1px 1px rgba(0,0,0,.04);
+  --bar:rgba(249,249,249,.78);
+  --f-ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,"Inter","Segoe UI",Roboto,sans-serif;
+  --f-display:var(--f-ui);
+  --f-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#000000; --surface:#1c1c1e; --sunk:#2c2c2e; --fill:rgba(118,118,128,.24); --fill-2:rgba(118,118,128,.16);
+  --ink:#ffffff; --muted:rgba(235,235,245,.62); --faint:rgba(235,235,245,.3); --line:rgba(84,84,88,.55);
+  --accent:#3cc8ad; --accent-ink:#002b23; --accent-soft:rgba(60,200,173,.16);
+  --ok:#30d158; --ok-soft:rgba(48,209,88,.18); --warn:#ff9f0a; --warn-soft:rgba(255,159,10,.18); --bad:#ff453a; --bad-soft:rgba(255,69,58,.18);
+  --shadow:0 8px 30px rgba(0,0,0,.6); --bar:rgba(22,22,24,.78); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#000000; --surface:#1c1c1e; --sunk:#2c2c2e; --fill:rgba(118,118,128,.24); --fill-2:rgba(118,118,128,.16);
+  --ink:#ffffff; --muted:rgba(235,235,245,.62); --faint:rgba(235,235,245,.3); --line:rgba(84,84,88,.55);
+  --accent:#3cc8ad; --accent-ink:#002b23; --accent-soft:rgba(60,200,173,.16);
+  --ok:#30d158; --ok-soft:rgba(48,209,88,.18); --warn:#ff9f0a; --warn-soft:rgba(255,159,10,.18); --bad:#ff453a; --bad-soft:rgba(255,69,58,.18);
+  --shadow:0 8px 30px rgba(0,0,0,.6); --bar:rgba(22,22,24,.78); color-scheme:dark}
+
+body{font:15px/1.4 var(--f-ui);letter-spacing:-.005em}
+body::before{background:var(--bar);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px)}
+/* верхняя панель — полупрозрачная */
+header.top{background:transparent;border-bottom:.5px solid var(--line);isolation:isolate}
+header.top::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--bar);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px)}
+.top-in{min-height:52px}
+.brand-name{font-family:var(--f-ui);font-size:17px;font-weight:600;letter-spacing:-.01em}
+.brand-clinic{font-size:12px}
+/* вкладки на компьютере — сегментированный переключатель */
+nav.tabs{background:var(--fill);padding:2px;border-radius:9px;gap:2px}
+nav.tabs button{padding:6px 14px;border-radius:7px;color:var(--ink);font-weight:500;font-size:14px;transition:background .2s var(--ease)}
+nav.tabs button[aria-current="page"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm)}
+nav.tabs svg{width:17px;height:17px;color:var(--muted)}
+nav.tabs button[aria-current="page"] svg{color:var(--accent)}
+
+main{padding-block:24px 104px}
+h1{font-family:var(--f-ui);font-size:28px;font-weight:700;letter-spacing:-.022em}
+h2{font-size:13px;font-weight:500;letter-spacing:.02em;color:var(--muted);margin:0 0 8px 4px}
+.bar{gap:8px}
+.panel{border:0;border-radius:12px;background:var(--surface)}
+.pad{padding:16px}
+
+/* кнопки */
+.btn{border:0;background:var(--fill);color:var(--accent);border-radius:10px;padding:8px 14px;font-weight:600;font-size:15px;min-height:40px;
+  transition:transform .08s var(--ease),opacity .15s,background .2s}
+.btn:active:not(:disabled){transform:scale(.97);opacity:.8}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:none;color:var(--accent)}
+.btn.danger{color:var(--bad)}
+.btn.sm{min-height:32px;padding:5px 12px;font-size:14px;border-radius:8px}
+.icon-btn{width:30px;height:30px;border:0;border-radius:50%;background:var(--fill);color:var(--muted);font-size:13px;font-weight:700}
+.icon-btn:active{transform:scale(.94)}
+/* поля ввода */
+input.f,select.f,textarea.f{border:1px solid transparent;background:var(--fill);border-radius:10px;padding:10px 12px;min-height:44px;font-size:16px;transition:border-color .15s,box-shadow .15s}
+input.f:focus,select.f:focus,textarea.f:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:var(--surface)}
+input.f::placeholder,textarea.f::placeholder{color:var(--faint)}
+label.fl,div.fl{font-size:13px;font-weight:500;color:var(--muted);gap:6px}
+select.f{appearance:none;-webkit-appearance:none;padding-right:34px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%238e8e93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center}
+/* чипы и сегменты */
+.chip{border:0;background:var(--fill);font-size:14px;padding:6px 12px;font-weight:500}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.seg{border:0;background:var(--fill);padding:2px;border-radius:9px;gap:2px}
+.seg button{background:none;border-radius:7px;padding:6px 14px;color:var(--ink);font-size:14px;font-weight:500;transition:background .2s var(--ease)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-sm)}
+/* статусы — тонированные метки */
+.pill{font-weight:600;padding:2px 8px;border-radius:6px;font-size:12px}
+.s-scheduled{background:var(--fill);color:var(--muted)}
+.s-confirmed{background:var(--ok-soft);color:var(--ok)}
+.s-done{background:var(--accent-soft);color:var(--accent)}
+.s-cancelled{background:var(--fill-2);color:var(--faint)}
+.s-no_show,.debt{background:var(--bad-soft);color:var(--bad)}
+/* сгруппированные списки с отбивкой от левого края */
+.row{border-top:0;padding:11px 16px;min-height:52px;position:relative;transition:background .15s}
+.row+.row::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--line)}
+.row:has(.avatar)+.row::before,.row+.row:has(.avatar)::before{left:64px}
+.row:hover{background:var(--fill-2)}
+.row:active{background:var(--fill)}
+.row .main b{font-weight:500;font-size:16px}
+.row .main span{font-size:13px}
+.avatar{width:38px;height:38px;font-size:15px;background:var(--accent-soft);color:var(--accent)}
+.note-card{border-top:0;position:relative;padding:11px 16px}
+.note-card+.note-card::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--line)}
+/* показатели */
+.kpi{padding:16px}
+.kpi .v{font-size:28px;font-weight:700;letter-spacing:-.02em}
+.kpi .l{font-size:13px}
+.hbar .track{background:var(--fill);height:8px}
+.summary{color:var(--muted)}
+.summary b{font-weight:600}
+/* расписание */
+.sched-wrap{border:0;border-radius:12px;background:var(--surface)}
+.sched .hd{background:var(--bar);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-bottom:.5px solid var(--line);font-size:14px}
+.tcol .tick{font-size:11px;font-family:var(--f-ui);font-variant-numeric:tabular-nums}
+.tcol .tick.h{border-top-color:var(--line)}
+.dcol{border-left:.5px solid var(--line)}
+.dcol .cell{border-top:.5px dashed var(--line)}
+.dcol .cell.h{border-top:.5px solid var(--line)}
+.dcol .cell:hover{background:var(--accent-soft)}
+.dcol .cell.past{background:repeating-linear-gradient(135deg,transparent 0 6px,var(--fill-2) 6px 7px)}
+.appt{border:0;border-radius:8px;background:color-mix(in srgb,var(--c) 14%,var(--surface));box-shadow:none;padding:5px 8px 5px 10px}
+.appt::before{width:3px}
+.appt .t{font-family:var(--f-ui);font-variant-numeric:tabular-nums}
+.appt.done{background:color-mix(in srgb,var(--c) 22%,var(--surface))}
+.appt.no_show{background:var(--bad-soft)}
+.nowline{background:var(--bad);height:1.5px}
+.nowline::before{content:"";position:absolute;left:-4px;top:-3.5px;width:8px;height:8px;border-radius:50%;background:var(--bad)}
+.daylabel{font-weight:600;font-size:17px}
+/* карточки дня */
+.dayl{gap:8px}
+.dcard{border:0;border-radius:12px;background:var(--surface);padding:14px 16px;position:relative;overflow:hidden;border-left:0;grid-template-columns:58px minmax(0,1fr)}
+.dcard::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--c)}
+.dcard.done{background:var(--surface)}
+.dcard.done .tm{color:var(--accent)}
+.dcard.no_show{background:color-mix(in srgb,var(--bad) 6%,var(--surface))}
+.dcard .tm{font-family:var(--f-ui);font-variant-numeric:tabular-nums;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.dcard .who b{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.dcard .meta{font-size:14px}
+.dcard .acts{gap:6px;margin-top:12px}
+/* слоты времени */
+.slots button{border:0;background:var(--fill);border-radius:8px;font-family:var(--f-ui);font-variant-numeric:tabular-nums;font-weight:500;min-height:38px}
+.slots button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+/* шторка: снизу на телефоне, по центру на компьютере */
+.scrim{background:rgba(0,0,0,.32);align-items:center;justify-content:center;padding:24px;animation:fadeIn .25s var(--ease)}
+.sheet{background:var(--bg);width:min(600px,100%);height:auto;max-height:min(880px,calc(100dvh - 48px));border-radius:14px;box-shadow:var(--shadow);animation:popIn .3s var(--ease)}
+.sheet-hd{background:var(--bar);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--line);padding:12px 16px}
+.sheet-hd h3{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.sheet-bd{gap:20px;padding:16px 16px calc(28px + env(safe-area-inset-bottom,0px))}
+@keyframes fadeIn{from{opacity:0}}
+@keyframes popIn{from{opacity:0;transform:scale(.96) translateY(8px)}}
+@keyframes slideUp{from{transform:translateY(100%)}}
+.kv{font-size:15px;gap:10px 12px;background:var(--surface);border-radius:12px;padding:14px 16px;margin:0}
+.sheet .kpi .v{font-size:20px;white-space:nowrap}
+.mono{font-family:var(--f-ui)}
+.toast{background:rgba(30,30,32,.88);color:#fff;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:999px;padding:10px 18px;font-weight:500;box-shadow:var(--shadow);animation:popIn .25s var(--ease)}
+.err{color:var(--bad)}
+/* зубная формула и смета */
+.tooth{border:.5px solid var(--line);border-radius:7px}
+.legend button,.svc-pick button{border:0;background:var(--fill)}
+.legend button[aria-pressed="true"]{background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.svc-pick button{border-radius:10px;padding:8px 12px}
+.svc-pick button:hover{background:var(--accent-soft)}
+.pitem{border-top:.5px solid var(--line)}
+.pitem .nums input,.pitem .nums select{border:0;background:var(--fill);border-radius:8px}
+.stage-hd{background:var(--fill-2);font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.02em}
+.tchart{border:0}
+/* ИИ-помощник: кнопка и чат как в «Сообщениях» */
+.fab{border-radius:999px;padding:12px 18px;box-shadow:0 6px 20px color-mix(in srgb,var(--accent) 35%,transparent);transition:transform .08s var(--ease)}
+.fab:active{transform:scale(.96)}
+.msg{border-radius:18px;font-size:15px;padding:9px 14px}
+.msg.u{border-bottom-right-radius:6px}
+.msg.a{background:var(--surface);border:0;border-bottom-left-radius:6px}
+.chat-in textarea{border-radius:20px;min-height:40px;padding:9px 14px}
+.chat-in .btn.primary{border-radius:50%;width:40px;min-height:40px;padding:0;justify-content:center}
+/* файлы */
+.file{border:0;border-radius:12px}
+.file .ico{background:var(--fill)}
+/* вход */
+.login{border-radius:16px;padding:28px 24px;gap:16px;margin-top:10vh;max-width:380px}
+.login h1{font-size:28px;text-align:center}
+.who-list{gap:0;background:var(--bg);border-radius:12px;overflow:hidden}
+.who-btn{border:0;border-radius:0;background:var(--sunk);padding:12px 14px;position:relative;min-height:52px}
+.who-btn+.who-btn::before{content:"";position:absolute;top:0;left:52px;right:0;height:.5px;background:var(--line)}
+.who-btn[aria-pressed="true"]{box-shadow:none;background:var(--accent-soft)}
+.who-btn[aria-pressed="true"]::after{content:"";position:absolute;right:16px;top:50%;width:6px;height:11px;margin-top:-7px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg)}
+.demo{background:var(--warn-soft)}
+.demo a{color:inherit;font-weight:700;margin-left:10px;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+.demo-entry{max-width:560px;margin:28px auto;padding:0 16px}
+.demo-entry h1{font-size:30px;letter-spacing:-.02em;margin:8px 0 6px}
+.demo-entry p{color:var(--muted);margin:0 0 18px;line-height:1.45}
+.role-card{display:flex;gap:14px;align-items:center;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line,rgba(0,0,0,.08));border-radius:16px;padding:16px;margin-bottom:10px;cursor:pointer;font:inherit;color:inherit}
+.role-card:hover{border-color:var(--accent)}
+.role-card .ic{flex:none;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--accent-soft,rgba(15,122,104,.12));color:var(--accent);font-size:22px}
+.role-card b{display:block;font-size:17px}.role-card small{color:var(--muted);font-size:14px;line-height:1.35}
+.demo-entry .cta-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+.demo-entry .cta-row a{text-decoration:none}
+
+
+/* шапка расписания: крупный день + неделя как в «Календаре» */
+.sched-head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.sched-head h1{line-height:1.1}
+.sched-head .sub{font-size:15px;margin-top:2px}
+.icon-btn.lg{width:40px;height:40px;color:var(--accent);position:relative;cursor:pointer}
+.icon-btn.cal input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.week{display:grid;grid-template-columns:28px repeat(7,minmax(0,1fr)) 28px;align-items:center;gap:2px;background:var(--surface);border-radius:12px;padding:8px 6px;margin-bottom:12px}
+.wk-nav{border:0;background:none;color:var(--accent);font-size:22px;line-height:1;height:44px}
+.wk-day{border:0;background:none;display:grid;justify-items:center;gap:3px;padding:4px 0;border-radius:10px;color:var(--ink)}
+.wk-day small{font-size:11px;color:var(--muted);font-weight:500}
+.wk-day b{width:34px;height:34px;display:grid;place-items:center;border-radius:50%;font-size:17px;font-weight:500;font-variant-numeric:tabular-nums}
+.wk-day.today b{color:var(--accent);font-weight:700}
+.wk-day.on b{background:var(--ink);color:var(--surface);font-weight:600}
+.wk-day.on.today b{background:var(--accent);color:var(--accent-ink)}
+.wk-day:active b{transform:scale(.92)}
+.filters{flex-wrap:nowrap;align-items:center}
+.chips.scroll{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 0}
+.chips.scroll::-webkit-scrollbar{display:none}
+.chips.scroll .chip{flex:none}
+.filters .seg{flex:none}
+.chips.scroll{min-width:0;flex:1}
+.kpi .v{white-space:nowrap}
+@media (max-width:760px){.kpi .v{font-size:22px}}
+
+/* вход: поле с выпадающим списком пользователей */
+.cb{position:relative}
+.cb-input{padding-right:44px}
+.cb-toggle{position:absolute;right:4px;top:4px;bottom:4px;width:36px;border:0;border-radius:8px;background:none;color:var(--muted);display:grid;place-items:center}
+.cb-toggle:hover{background:var(--fill)}
+.cb-input[aria-expanded="true"]+.cb-toggle svg{transform:rotate(180deg)}
+.cb-toggle svg{transition:transform .2s var(--ease)}
+.cb-list{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:20;margin:0;padding:4px;list-style:none;background:var(--surface);border-radius:12px;
+  box-shadow:var(--shadow),0 0 0 .5px var(--line);max-height:260px;overflow:auto;animation:popIn .18s var(--ease)}
+.cb-list li{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;color:var(--ink)}
+.cb-list li:hover,.cb-list li[aria-selected="true"]{background:var(--fill)}
+.cb-ico{width:30px;height:30px;border-radius:50%;background:var(--fill);color:var(--muted);display:grid;place-items:center;flex:none}
+.cb-txt{display:grid;line-height:1.25;min-width:0;flex:1}
+.cb-txt b{font-weight:500;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cb-txt small{font-size:12px;color:var(--muted)}
+.cb-check{color:var(--accent);font-weight:700}
+.login .fl{color:var(--muted);display:grid;gap:6px}
+@media (max-width:760px){
+  body{font-size:16px}
+  main{padding-block:16px 112px}
+  h1{font-size:30px}
+  nav.tabs{background:var(--bar);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--line);border-radius:0;padding:4px max(8px,env(safe-area-inset-right,0px)) calc(4px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));gap:0}
+  nav.tabs button{font-size:10.5px;font-weight:500;padding:6px 4px 4px;color:var(--muted);background:none!important;box-shadow:none!important;letter-spacing:.01em}
+  nav.tabs button svg{width:24px;height:24px;color:inherit}
+  nav.tabs button[aria-current="page"]{color:var(--accent)}
+  nav.tabs button[aria-current="page"] svg{color:var(--accent)}
+  .scrim{align-items:flex-end;padding:0;padding-top:env(safe-area-inset-top,0px)}
+  .sheet{width:100%;max-height:calc(100dvh - 12px - env(safe-area-inset-top,0px));border-radius:14px 14px 0 0;animation:slideUp .32s var(--ease)}
+  .sheet-hd{padding:20px 16px 12px;position:sticky}
+  .sheet-hd::before{content:"";position:absolute;left:50%;top:6px;width:36px;height:5px;margin-left:-18px;border-radius:3px;background:var(--faint)}
+  .fab{bottom:calc(72px + env(safe-area-inset-bottom,0px))}
+  .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
+  .dcard .acts .btn.sm{min-height:36px;padding:6px 12px}
+  .btn{min-height:44px}
+  .btn.sm{min-height:34px}
+}
+@media (prefers-reduced-motion:reduce){.sheet,.scrim,.toast{animation:fadeIn .2s!important}}
+</style>
+
+<div id="demo" class="demo" hidden><span>Демо-версия · данные вымышленные, сбрасываются при перезагрузке</span> <a href="#" id="demoRole">Сменить роль</a> <a id="demoBuy" target="_blank" rel="noopener">Подключить клинику →</a></div>
+<header class="top"><div class="top-in">
+  <div class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 3c-3 0-5 2.5-5 6 0 3 1.4 4.6 2 7 .7 2.8 1 7 3 7 2.2 0 2.2-6 6-6s3.8 6 6 6c2 0 2.3-4.2 3-7 .6-2.4 2-4 2-7 0-3.5-2-6-5-6-2.4 0-3.6 1.4-6 1.4S9.4 3 7 3z" fill="var(--accent)"/></svg>
+    <span class="brand-text"><span class="brand-name">AI Dentist</span><span id="clinicName" class="brand-clinic"></span></span>
+  </div>
+  <nav class="tabs" id="tabs" hidden></nav>
+</div></header>
+<main id="app"></main>
+
+<script>
+"use strict";
+// ================= утилиты =================
+const $ = (s, r = document) => r.querySelector(s);
+// пустые элементы (null/false) не превращаем в текст «null»
+for (const m of ["append", "prepend", "replaceChildren"]) { const o = Element.prototype[m];
+  Element.prototype[m] = function (...a) { return o.apply(this, a.flat(Infinity).filter(x => x != null && x !== false)); }; }
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "style" && typeof v === "object") { for (const [sk, sv] of Object.entries(v)) sk.startsWith("--") ? el.style.setProperty(sk, sv) : (el.style[sk] = sv); }
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "html") el.innerHTML = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) el.append(k.nodeType ? k : String(k));
+  return el;
+}
+const pad = n => String(n).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const nowStr = () => { const d = new Date(); return `${iso(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const addDays = (s, n) => { const d = new Date(s + "T12:00"); d.setDate(d.getDate() + n); return iso(d); };
+const toMin = t => { const [a, b] = t.split(":").map(Number); return a * 60 + b; };
+const fromMin = m => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+const DOW = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+const MON = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const ruDay = s => { const d = new Date(s + "T12:00"); return `${d.getDate()} ${MON[d.getMonth()]}, ${DOW[d.getDay()]}`; };
+let REF = { currency: "сом" };
+const money = x => `${Math.round(x || 0).toLocaleString("ru-RU")} ${REF.currency}`;
+const initials = n => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+function toast(msg) {
+  const t = h("div", { class: "toast", role: "status" }, msg);
+  document.body.append(t); setTimeout(() => t.remove(), 2600);
+}
+const statusPill = s => h("span", { class: `pill s-${s}` }, REF.statuses?.[s] || s);
+
+// ================= API (сервер или демо) =================
+let DEMO = false, AUTH = "";
+let DEMO_ME = { uid: 0, role: "owner", name: "Главный администратор", doctor_id: null };
+const DEMO_CONTACT = "https://wa.me/996551011103?text=" + encodeURIComponent("Здравствуйте! Посмотрел демо AI Dentist, хочу подключить клинику");
+async function api(method, path, body) {
+  if (DEMO) return Mock.call(method, path, body);
+  const r = await fetch(path, { method, headers: { "Content-Type": "application/json", Authorization: AUTH },
+    body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { AUTH = ""; try { sessionStorage.removeItem("tok"); } catch (e) {} showLogin(); throw new Error("Нужен вход"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : Array.isArray(d) ? "Проверьте поля: " + d.map(x => (x.loc || []).slice(-1)[0]).join(", ") : "Ошибка сервера");
+  }
+  return data;
+}
+
+// ---------- демо-сервер в браузере (повторяет логику настоящего) ----------
+const Mock = (() => {
+  const today = iso(new Date());
+  const S = { doctors: [
+      { id: 1, name: "Ибрагимов Шахрух", specialty: "Стоматолог", color: "#16695a", tg_id: null, active: 1 },
+      { id: 2, name: "Бекболотов Нурлан", specialty: "Хирург", color: "#c0563b", tg_id: null, active: 1 },
+      { id: 3, name: "Ким Елена", specialty: "Ортопед", color: "#4a63b5", tg_id: null, active: 1 }],
+    rooms: [{ id: 1, name: "Кабинет 1" }, { id: 2, name: "Кабинет 2" }],
+    services: [["Консультация", 500, 30], ["Профчистка", 2500, 60], ["Лечение кариеса", 3000, 60], ["Пломба", 2500, 60],
+      ["Удаление зуба", 2000, 30], ["Лечение каналов", 6000, 90], ["Коронка металлокерамика", 12000, 60], ["Коронка циркониевая", 25000, 60],
+      ["Имплантация", 35000, 90], ["Установка формирователя десны", 5000, 30], ["Отбеливание", 7000, 90]]
+      .map(([name, price, duration_min], i) => ({ id: i + 1, name, price, duration_min, active: 1, kind: "" })),
+    patients: [], appointments: [], payments: [], plans: [], notes: [], files: [], users: [
+      { id: 1, login: "aigul", name: "Айгуль (администратор)", role: "admin", doctor_id: null, active: 1 },
+      { id: 2, login: "shahruh", name: "Ибрагимов Шахрух", role: "doctor", doctor_id: 1, active: 1 }], seq: 100 };
+  const names = ["Токтогулов Эрлан", "Мамытова Жылдыз", "Сыдыков Азамат", "Иванова Мария", "Абдыкадырова Бермет",
+    "Осмонов Тимур", "Жумабаева Айпери", "Петров Сергей", "Кадыров Улан", "Исакова Назира", "Шаршеев Медер", "Алиева Динара", "Курманов Бакыт", "Ли Анна"];
+  names.forEach((n, i) => S.patients.push({ id: i + 1, name: n, phone: "+996" + (700100200 + i * 13457), birth_date: "", gender: [1, 3, 4, 6, 9, 11, 13].includes(i) ? "f" : "m", care: i % 3 === 1 ? 1 : 0, notes: i === 3 ? "Аллергия на лидокаин" : "",
+    tg_id: i % 3 ? 1000 + i : null, teeth: i === 0 ? JSON.stringify({ 16: "filling", 36: "caries", 46: "missing", 21: "crown" }) : "{}", created_at: addDays(today, -(30 - i * 2)) + " 10:00" }));
+  const plan = [ // день, врач, пациент, время, услуга, статус
+    [-1, 1, 1, "09:00", 3, "done"], [-1, 2, 5, "10:00", 5, "done"], [-1, 3, 8, "11:00", 7, "done"], [-1, 1, 9, "14:00", 2, "no_show"],
+    [0, 1, 2, "09:00", 2, "done"], [0, 1, 3, "10:30", 3, "confirmed"], [0, 2, 4, "09:30", 5, "done"], [0, 2, 6, "11:00", 6, "scheduled"],
+    [0, 3, 7, "10:00", 7, "confirmed"], [0, 1, 10, "14:00", 4, "scheduled"], [0, 3, 11, "15:00", 1, "scheduled"], [0, 2, 12, "16:00", 5, "cancelled"],
+    [1, 1, 13, "09:30", 2, "scheduled"], [1, 2, 14, "10:00", 6, "confirmed"], [1, 3, 1, "12:00", 7, "scheduled"], [2, 1, 5, "11:00", 3, "scheduled"]];
+  const roomUse = {};
+  plan.forEach(([dd, doc, pat, t, svc, st], i) => {
+    const s = S.services[svc - 1], day = addDays(today, dd), key = day + t;
+    const room = roomUse[key] ? 2 : 1; roomUse[key] = 1;
+    S.appointments.push({ id: i + 1, patient_id: pat, doctor_id: doc, room_id: room, service_id: svc, start: `${day} ${t}`, duration_min: s.duration_min,
+      status: st, price: s.price, notes: "", source: i % 4 === 1 ? "bot" : "admin", reminded: 0, created_at: day + " 08:00" });
+  });
+  const sv = id => S.services[id - 1];
+  const it = (stage, id, teeth, disc = 0) => ({ stage, service_id: id, name: sv(id).name, teeth, qty: teeth ? teeth.split(",").length : 1, price: sv(id).price, discount_pct: disc });
+  S.plans.push({ id: 1, patient_id: 1, doctor_id: 1, title: "План лечения", status: "sent", discount_pct: 0, notes: "Начинаем с имплантации 14 и 35.", created_at: addDays(today, -1) + " 12:00",
+    items: [it(1, 9, "14,35"), it(1, 10, "14,35"), it(1, 6, "36"), it(1, 5, "48"), it(1, 4, "25"), it(2, 8, "36", 10), it(2, 2, "")] });
+  S.notes.push({ id: 1, patient_id: 1, appointment_id: 1, doctor_id: 1, teeth: "26", created_at: addDays(today, -1) + " 09:50", sent_at: addDays(today, -1) + " 10:05",
+    complaints: "Кратковременная боль от холодного в области 26 зуба.", diagnosis: "K02.1 Кариес дентина зуба 26",
+    treatment: "Инфильтрационная анестезия. Препарирование кариозной полости, медикаментозная обработка, изоляция коффердамом, адгезивный протокол, восстановление светоотверждаемым композитом. Шлифовка, полировка, контроль окклюзии.",
+    recommendations: "Не есть 2 часа.\nПервые сутки возможна чувствительность — это нормально.\nЧистить зубы 2 раза в день, использовать зубную нить.\nПрофосмотр через 6 месяцев." });
+  [[1, 1, 3000, "cash", -1], [5, 2, 2000, "card", -1], [8, 3, 4000, "transfer", -1], [2, 5, 2500, "cash", 0], [4, 7, 2000, "card", 0]]
+    .forEach(([pid, aid, amount, method, dd], i) => S.payments.push({ id: i + 1, patient_id: pid, appointment_id: aid, amount, method, note: "", created_at: addDays(today, dd) + " 13:00" }));
+
+  const by = (arr, id) => arr.find(x => x.id === +id);
+  const planFull = pl => { const pa = by(S.patients, pl.patient_id), d = by(S.doctors, pl.doctor_id);
+    return { ...planCalc(pl), patient_name: pa.name, patient_gender: pa.gender || "", patient_phone: pa.phone, patient_tg: pa.tg_id, doctor_name: d?.name || null }; };
+  const enrich = a => { const p = by(S.patients, a.patient_id), d = by(S.doctors, a.doctor_id), r = by(S.rooms, a.room_id), s = by(S.services, a.service_id);
+    return { ...a, patient_name: p.name, patient_phone: p.phone, patient_tg: p.tg_id, doctor_name: d.name, doctor_color: d.color, room_name: r?.name, service_name: s?.name }; };
+  const active = a => ["scheduled", "confirmed", "done"].includes(a.status);
+  const overlap = (a, start, dur) => { const s = toMin(start.slice(11)), as = toMin(a.start.slice(11));
+    return a.start.slice(0, 10) === start.slice(0, 10) && as < s + dur && s < as + a.duration_min; };
+  const busy = (start, dur, docId, roomId, ex) => S.appointments.find(a => a.id !== ex && active(a) && overlap(a, start, dur) &&
+    ((docId && a.doctor_id === +docId) || (roomId && a.room_id === +roomId)));
+  const freeRoom = (start, dur, ex) => S.rooms.find(r => !busy(start, dur, null, r.id, ex))?.id;
+  const balance = pid => { const charged = S.appointments.filter(a => a.patient_id === +pid && a.status === "done").reduce((s, a) => s + a.price, 0);
+    const paid = S.payments.filter(y => y.patient_id === +pid).reduce((s, y) => s + y.amount, 0); return { charged, paid, debt: charged - paid }; };
+  const card = pid => { const p = by(S.patients, pid); return { ...p, ...balance(pid),
+    visit_notes: S.notes.filter(n => n.patient_id === +pid).map(n => ({ ...n, doctor_name: by(S.doctors, n.doctor_id)?.name, appt_start: by(S.appointments, n.appointment_id)?.start })).reverse(),
+    files: S.files.filter(f => f.patient_id === +pid),
+    appointments: S.appointments.filter(a => a.patient_id === +pid).map(enrich).sort((a, b) => a.start.localeCompare(b.start)),
+    payments: S.payments.filter(y => y.patient_id === +pid).sort((a, b) => b.created_at.localeCompare(a.created_at)) }; };
+  const debtors = () => S.patients.map(p => ({ id: p.id, name: p.name, phone: p.phone, debt: balance(p.id).debt })).filter(x => x.debt > 0).sort((a, b) => b.debt - a.debt);
+  const fail = m => { throw new Error(m); };
+  function book(b, ex) {
+    let pid = b.patient_id;
+    if (!pid && b.new_patient?.name) { pid = ++S.seq; S.patients.push({ id: pid, name: b.new_patient.name.trim(), phone: b.new_patient.phone || "", birth_date: "", notes: "", tg_id: null, teeth: "{}", created_at: nowStr() }); }
+    if (!pid) fail("Укажите пациента");
+    const s = by(S.services, b.service_id); const dur = +(b.duration_min || s?.duration_min || 30);
+    const price = b.price != null && b.price !== "" ? +b.price : (s?.price || 0);
+    if (busy(b.start, dur, b.doctor_id, null, ex)) fail("У врача уже есть приём в это время");
+    let room = b.room_id; if (room) { if (busy(b.start, dur, null, room, ex)) fail("Кабинет занят в это время"); } else room = freeRoom(b.start, dur, ex);
+    if (!room) fail("Все кабинеты заняты в это время");
+    const rec = { patient_id: +pid, doctor_id: +b.doctor_id, room_id: +room, service_id: b.service_id ? +b.service_id : null, start: b.start, duration_min: dur, price, notes: b.notes || "" };
+    if (ex) { Object.assign(by(S.appointments, ex), rec); return enrich(by(S.appointments, ex)); }
+    const a = { id: ++S.seq, status: "scheduled", source: "admin", reminded: 0, created_at: nowStr(), ...rec }; S.appointments.push(a); return enrich(a);
+  }
+  function report(from, to) {
+    const ap = S.appointments.filter(a => a.start.slice(0, 10) >= from && a.start.slice(0, 10) <= to).map(enrich);
+    const pays = S.payments.filter(y => y.created_at.slice(0, 10) >= from && y.created_at.slice(0, 10) <= to);
+    const by_status = Object.fromEntries(Object.keys(REF.statuses).map(k => [k, 0])); ap.forEach(a => by_status[a.status]++);
+    const by_doctor = {}; ap.filter(a => a.status === "done").forEach(a => { const x = by_doctor[a.doctor_name] ||= { visits: 0, sum: 0 }; x.visits++; x.sum += a.price; });
+    const by_method = {}; pays.forEach(y => by_method[y.method] = (by_method[y.method] || 0) + y.amount);
+    return { appointments: ap.length, by_status, done_sum: ap.filter(a => a.status === "done").reduce((s, a) => s + a.price, 0),
+      paid: pays.reduce((s, y) => s + y.amount, 0), by_method, by_doctor, total_debt: debtors().reduce((s, d) => s + d.debt, 0),
+      new_patients: S.patients.filter(p => p.created_at.slice(0, 10) >= from && p.created_at.slice(0, 10) <= to).length, from_bot: ap.filter(a => a.source === "bot").length };
+  }
+  function slots(docId, day, dur) {
+    const res = []; dur = +dur || 30; const now = nowStr();
+    for (let t = toMin(REF.work_start); t + dur <= toMin(REF.work_end); t += REF.slot) {
+      const s = `${day} ${fromMin(t)}`; if (s <= now) continue;
+      if (!busy(s, dur, docId) && freeRoom(s, dur)) res.push(fromMin(t));
+    } return res;
+  }
+  // ---- демо-ИИ: отвечает по данным демо-клиники, без настоящей модели ----
+  function demoAI(q) {
+    const t = q.toLowerCase(), day = /завтра/.test(t) ? addDays(today, 1) : today;
+    const act = [];
+    if (/выручк|заработ|касс|отчёт|отчет|деньг/.test(t)) {
+      const r = report(t.includes("недел") ? addDays(today, -6) : today, today);
+      return { reply: `${t.includes("недел") ? "За 7 дней" : "Сегодня"}:\n• приёмов: ${r.appointments}, пришли ${r.by_status.done}\n• оказано услуг на ${money(r.done_sum)}\n• получено денег ${money(r.paid)}\n• общий долг пациентов ${money(r.total_debt)}` + Object.entries(r.by_doctor).map(([n, x]) => `\n• ${n}: ${x.visits} пац., ${money(x.sum)}`).join(""), actions: act };
+    }
+    if (/долж|долг/.test(t)) { const d = debtors(); return { reply: d.length ? "Должники:\n" + d.map(x => `• ${x.name} — ${money(x.debt)} (${x.phone})`).join("\n") : "Долгов нет 👍", actions: act }; }
+    if (/кто|запис|расписан|приём|прием/.test(t) && !/запиши/.test(t)) {
+      const ap = S.appointments.filter(a => a.start.startsWith(day) && a.status !== "cancelled").map(enrich).sort((a, b) => a.start.localeCompare(b.start));
+      return { reply: ap.length ? `${day === today ? "Сегодня" : "Завтра"} ${ap.length} приём(а):\n` + ap.map(a => `• ${a.start.slice(11)} ${a.patient_name} — ${a.service_name || "приём"}, ${a.doctor_name}`).join("\n") : "Записей нет.", actions: act };
+    }
+    if (/рекомендац/.test(t)) return { reply: "Рекомендации после удаления зуба:\n1. Не полоскать рот 24 часа.\n2. Не есть 2 часа, не пить горячее в первые сутки.\n3. Холод к щеке по 15 минут с перерывами в первые 2–3 часа.\n4. Не греть щеку, не ходить в баню 3 дня.\n5. При сильной боли, кровотечении или температуре выше 38 °C — сразу позвоните в клинику.", actions: act };
+    return { reply: "Это демо-режим: здесь помощник понимает только простые вопросы («кто записан завтра», «выручка за неделю», «кто должен», «рекомендации после удаления»).\n\nВ рабочей системе ИИ-помощник понимает любые задачи: записывает и переносит пациентов, составляет сметы, оформляет протоколы, отвечает по картам.", actions: act };
+  }
+  function demoNote(text, service) {
+    const k = detectKind(service + " " + text), tpl = NOTE_TPL.find(x => x.kinds.includes(k)) || NOTE_TPL[0];
+    const teeth = (text.match(/\b[1-4][1-8]\b/g) || []).join(" ");
+    const f = v => v.replaceAll("{t}", teeth || "—");
+    return { complaints: f(tpl.complaints), diagnosis: f(tpl.diagnosis), treatment: f(tpl.treatment) + (text ? `\n(заметка врача: ${text})` : ""), recommendations: tpl.recommendations, teeth };
+  }
+  async function call(method, path, b) {
+    await new Promise(r => setTimeout(r, 60));
+    const u = new URL(path, "http://x"), q = Object.fromEntries(u.searchParams), p = u.pathname.split("/").slice(2);
+    const ref = () => ({ doctors: S.doctors.filter(d => d.active), rooms: S.rooms, services: S.services.filter(s => s.active),
+      statuses: { scheduled: "Записан", confirmed: "Подтвердил", done: "Пришёл", cancelled: "Отменён", no_show: "Не пришёл" },
+      methods: { cash: "Наличные", card: "Карта", transfer: "Перевод" }, clinic: DEMO ? "Демо-клиника" : "Стоматолог", currency: "сом", work_start: "09:00", work_end: "19:00", slot: 30,
+      me: DEMO_ME, roles: { owner: "Главный администратор", admin: "Администратор", doctor: "Врач" }, ai: "demo" });
+    const R = `${method} /${p.join("/")}`;
+    const ME = DEMO_ME;
+    if (R === "GET /me") return ME;
+    if (method === "POST" && p[2] === "care") { const pt = by(S.patients, p[1]); if (b.action === "off") pt.care = 0; else if (!pt.tg_id) fail("Пациент не подписан на бота"); return card(p[1]); }
+    if (method === "POST" && p[0] === "notes" && !p[2]) { const pid = b.patient_id || by(S.appointments, b.appointment_id)?.patient_id;
+      const n = { id: ++S.seq, patient_id: +pid, appointment_id: b.appointment_id || null, doctor_id: by(S.appointments, b.appointment_id)?.doctor_id || null, created_at: nowStr(), sent_at: null,
+        complaints: b.complaints || "", diagnosis: b.diagnosis || "", treatment: b.treatment || "", recommendations: b.recommendations || "", teeth: b.teeth || "" };
+      S.notes.push(n); return n; }
+    if (method === "PUT" && p[0] === "notes") { const n = by(S.notes, p[1]); Object.assign(n, { complaints: b.complaints, diagnosis: b.diagnosis, treatment: b.treatment, recommendations: b.recommendations, teeth: b.teeth }); return n; }
+    if (method === "POST" && p[0] === "notes" && p[2] === "send") fail("В демо отправка в Telegram недоступна");
+    if (method === "GET" && p[0] === "appointments" && p[2] === "note") return S.notes.filter(n => n.appointment_id === +p[1]).pop() || {};
+    if (method === "POST" && p[2] === "message") fail("В демо отправка в Telegram недоступна — на сервере сообщение уйдёт пациенту в бот");
+    if (method === "POST" && p[2] === "files") { S.files.unshift({ id: ++S.seq, patient_id: +p[1], name: b.name, mime: b.mime, data: b.data, size: Math.round(b.data.length * .75), created_at: nowStr() }); return S.files.filter(f => f.patient_id === +p[1]); }
+    if (method === "DELETE" && p[0] === "files") { const f = by(S.files, p[1]); S.files = S.files.filter(x => x !== f); return S.files.filter(x => x.patient_id === f.patient_id); }
+    if (R === "GET /users") return S.users.map(u => ({ ...u, doctor_name: by(S.doctors, u.doctor_id)?.name }));
+    if (method === "POST" && p[0] === "users") { if (!b.login || (b.password || "").length < 4) fail("Укажите логин, роль и пароль (от 4 символов)"); S.users.push({ id: ++S.seq, login: b.login, name: b.name, role: b.role, doctor_id: b.doctor_id || null, active: 1 }); return call("GET", "/api/users"); }
+    if (method === "PUT" && p[0] === "users") { Object.assign(by(S.users, p[1]), { login: b.login, name: b.name, role: b.role, doctor_id: b.doctor_id || null, active: b.active }); return call("GET", "/api/users"); }
+    if (R === "POST /ai") return demoAI(b.messages[b.messages.length - 1].content);
+    if (R === "POST /ai/note") return demoNote(b.text, b.service);
+    if (R === "GET /ref") return ref();
+    if (R === "GET /appointments") return S.appointments.filter(a => (!q.day || a.start.startsWith(q.day)) && (!q.doctor_id || a.doctor_id === +q.doctor_id)).map(enrich).sort((a, b) => a.start.localeCompare(b.start));
+    if (R === "POST /appointments") return book(b);
+    if (method === "PUT" && p[0] === "appointments") return book(b, +p[1]);
+    if (method === "POST" && p[2] === "status") { by(S.appointments, p[1]).status = b.status; return enrich(by(S.appointments, p[1])); }
+    if (R === "GET /slots") return slots(q.doctor_id, q.day, q.dur);
+    if (R === "GET /patients") { const s = (q.q || "").toLowerCase(), dg = s.replace(/\D/g, "");
+      return S.patients.filter(x => !s || (dg.length >= 3 ? x.phone.replace(/\D/g, "").includes(dg) : x.name.toLowerCase().includes(s)))
+        .map(x => ({ ...x, last_visit: S.appointments.filter(a => a.patient_id === x.id && active(a)).map(a => a.start).sort().pop() || null })).slice(0, 50); }
+    if (R === "POST /patients") { const id = ++S.seq; S.patients.push({ id, tg_id: null, teeth: "{}", created_at: nowStr(), ...b }); return card(id); }
+    if (method === "GET" && p[0] === "patients" && !p[2]) return card(p[1]);
+    if (method === "PUT" && p[0] === "patients" && p[2] === "teeth") { by(S.patients, p[1]).teeth = JSON.stringify(b.teeth); return card(p[1]); }
+    if (method === "PUT" && p[0] === "patients") { Object.assign(by(S.patients, p[1]), b); return card(p[1]); }
+    if (R === "POST /payments") { if (!(+b.amount > 0)) fail("Сумма должна быть больше нуля");
+      S.payments.push({ id: ++S.seq, created_at: nowStr(), note: "", ...b, amount: +b.amount }); return balance(b.patient_id); }
+    if (R === "GET /debtors") return debtors();
+    if (method === "GET" && p[0] === "patients" && p[2] === "plans") return S.plans.filter(x => x.patient_id === +p[1]).sort((a, b) => b.id - a.id).map(planFull);
+    if (R === "POST /plans") { const pl = { id: ++S.seq, patient_id: +b.patient_id, doctor_id: b.doctor_id || null, title: b.title || "План лечения", status: "draft", discount_pct: 0, notes: "", created_at: nowStr(), items: [] }; S.plans.push(pl); return planFull(pl); }
+    if (method === "GET" && p[0] === "plans") return planFull(by(S.plans, p[1]));
+    if (method === "PUT" && p[0] === "plans") { const pl = by(S.plans, p[1]); for (const k of ["title", "status", "discount_pct", "doctor_id", "notes"]) if (b[k] != null) pl[k] = b[k];
+      if (b.items) pl.items = b.items.map((it, i) => ({ ...it, sort: i })); return planFull(pl); }
+    if (method === "DELETE" && p[0] === "plans") { S.plans = S.plans.filter(x => x.id !== +p[1]); return { ok: true }; }
+    if (method === "POST" && p[2] === "send") fail("В демо отправка в Telegram недоступна — на сервере PDF уйдёт пациенту в бот");
+    if (R === "GET /report") return report(q.date_from, q.date_to);
+    if (method === "POST" && p[0] === "doctors") { S.doctors.push({ id: ++S.seq, ...b }); return ref(); }
+    if (method === "PUT" && p[0] === "doctors") { Object.assign(by(S.doctors, p[1]), b); return ref(); }
+    if (method === "POST" && p[0] === "services") { S.services.push({ id: ++S.seq, ...b }); return ref(); }
+    if (method === "PUT" && p[0] === "services") { Object.assign(by(S.services, p[1]), b); return ref(); }
+    fail("Неизвестный запрос " + R);
+  }
+  return { call: (m, path, b) => call(m, path.replace(/^\/api/, "/api"), b) };
+})();
+
+// ================= навигация =================
+const ICONS = {
+  sched: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',
+  pat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+  fin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',
+  set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>'
+};
+const TABS = [["sched", "Расписание"], ["pat", "Пациенты"], ["fin", "Касса и отчёты"], ["set", "Настройки"]];
+let TAB = "sched";
+const ME = () => REF.me || { role: "owner" };
+const can = (...roles) => roles.includes(ME().role);
+const tabsFor = () => TABS.filter(([id]) => id !== "fin" || can("owner", "admin"));
+function renderTabs() {
+  const nav = $("#tabs"); nav.hidden = false; nav.replaceChildren();
+  for (const [id, label] of tabsFor()) nav.append(h("button", { "aria-current": TAB === id ? "page" : null, onclick: () => go(id), html: ICONS[id] + `<span>${label.replace("Касса и отчёты", innerWidth < 760 ? "Касса" : "Касса и отчёты")}</span>` }));
+}
+function go(id) { TAB = id; try { localStorage.setItem("tab", id); } catch (e) {} renderTabs(); VIEWS[id](); scrollTo(0, 0); }
+const app = () => $("#app");
+async function guard(fn, errEl) {
+  try { return await fn(); } catch (e) { if (errEl) errEl.textContent = e.message; else toast(e.message); }
+}
+
+// ================= расписание =================
+let DAY = iso(new Date()), DOCF = new Set(), SVIEW = null;
+async function viewSched() {
+  if (!SVIEW) { try { SVIEW = localStorage.getItem("sview"); } catch (e) {} SVIEW = SVIEW || (ME().role === "doctor" || innerWidth < 760 ? "list" : "grid"); }
+  const setView = v => { SVIEW = v; try { localStorage.setItem("sview", v); } catch (e) {} viewSched(); };
+  const docs = REF.doctors.filter(d => !DOCF.size || DOCF.has(d.id));
+  const appts = await api("GET", `/api/appointments?day=${DAY}`);
+  const live = appts.filter(a => a.status !== "cancelled");
+  const expected = live.reduce((s, a) => s + a.price, 0);
+  const today = iso(new Date());
+  const ws = (() => { const x = new Date(DAY + "T12:00"); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return iso(x); })();
+  const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+  const WDF = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+  const dObj = new Date(DAY + "T12:00");
+  const rel = DAY === today ? "Сегодня" : DAY === addDays(today, 1) ? "Завтра" : DAY === addDays(today, -1) ? "Вчера" : WDF[dObj.getDay()][0].toUpperCase() + WDF[dObj.getDay()].slice(1);
+  const go = d => { DAY = d; viewSched(); };
+  const root = app(); root.replaceChildren(
+    h("div", { class: "sched-head" },
+      h("div", { class: "grow" }, h("h1", {}, rel), h("div", { class: "muted sub" }, `${WDF[dObj.getDay()]}, ${ruDay(DAY).split(", ")[0]}`)),
+      h("label", { class: "icon-btn lg cal", title: "Выбрать дату", "aria-label": "Выбрать дату" },
+        h("span", { html: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>' }),
+        h("input", { type: "date", id: "dayPick", value: DAY, onchange: e => { if (e.target.value) go(e.target.value); } })),
+      h("button", { class: "btn primary", onclick: () => apptSheet({ day: DAY }) }, "+ Записать")),
+    h("div", { class: "week" },
+      h("button", { class: "wk-nav", "aria-label": "Прошлая неделя", onclick: () => go(addDays(DAY, -7)) }, "‹"),
+      [...Array(7)].map((_, i) => { const d = addDays(ws, i), dd = new Date(d + "T12:00");
+        return h("button", { class: "wk-day" + (d === DAY ? " on" : "") + (d === today ? " today" : ""), "aria-pressed": d === DAY ? "true" : "false", onclick: () => go(d) },
+          h("small", {}, WD[i]), h("b", {}, dd.getDate())); }),
+      h("button", { class: "wk-nav", "aria-label": "Следующая неделя", onclick: () => go(addDays(DAY, 7)) }, "›")),
+    h("div", { class: "bar filters" },
+      h("div", { class: "seg", role: "group", "aria-label": "Вид" },
+        h("button", { "aria-pressed": SVIEW === "list" ? "true" : "false", onclick: () => setView("list") }, "Список"),
+        h("button", { "aria-pressed": SVIEW === "grid" ? "true" : "false", onclick: () => setView("grid") }, "Сетка")),
+      h("div", { class: "chips scroll" }, REF.doctors.map(d =>
+        h("button", { class: "chip", "aria-pressed": DOCF.has(d.id) ? "true" : "false", onclick: () => { DOCF.has(d.id) ? DOCF.delete(d.id) : DOCF.add(d.id); viewSched(); } },
+          h("span", { class: "dot", style: { background: d.color } }), d.name)))),
+    h("div", { class: "summary" },
+      h("span", {}, "Приёмов: ", h("b", {}, live.length)),
+      h("span", {}, "Пришли: ", h("b", {}, appts.filter(a => a.status === "done").length)),
+      h("span", {}, "Подтвердили: ", h("b", {}, appts.filter(a => a.status === "confirmed").length)),
+      can("owner", "admin") ? h("span", {}, "По записям: ", h("b", { class: "num" }, money(expected))) : null),
+    SVIEW === "list" ? dayList(appts.filter(a => !DOCF.size || DOCF.has(a.doctor_id))) : schedGrid(docs, appts));
+  const nl = $(".nowline"), wrap = $(".sched-wrap");
+  if (nl && wrap) wrap.scrollTop = Math.max(0, nl.offsetTop - 120);
+}
+function schedGrid(docs, appts) {
+  const start = toMin(REF.work_start), end = toMin(REF.work_end), step = REF.slot;
+  const slotPx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--slot")) || 44;
+  const per = slotPx / step;
+  const grid = h("div", { class: "sched", style: { gridTemplateColumns: `52px repeat(${docs.length}, minmax(${innerWidth < 760 ? 150 : 180}px,1fr))` } });
+  grid.append(h("div", { class: "hd", style: { padding: "10px 4px" } }));
+  docs.forEach(d => grid.append(h("div", { class: "hd" }, h("span", { class: "dot", style: { background: d.color } }), h("div", { style: { minWidth: 0 } }, d.name, h("small", {}, d.specialty)))));
+  const tcol = h("div", { class: "tcol" });
+  for (let t = start; t < end; t += step) tcol.append(h("div", { class: "tick" + (t % 60 === 0 ? " h" : "") }, t % 60 === 0 ? fromMin(t) : ""));
+  grid.append(tcol);
+  const now = nowStr();
+  docs.forEach(d => {
+    const col = h("div", { class: "dcol" });
+    for (let t = start; t < end; t += step) {
+      const s = `${DAY} ${fromMin(t)}`, past = s < now.slice(0, 16) && fromMin(t + step) <= now.slice(11) || DAY < now.slice(0, 10);
+      col.append(h("button", { class: "cell" + (t % 60 === 0 ? " h" : "") + (past ? " past" : ""), "aria-label": `Записать к ${d.name} на ${fromMin(t)}`,
+        tabindex: past ? -1 : 0, onclick: past ? null : () => apptSheet({ day: DAY, time: fromMin(t), doctor_id: d.id }) }));
+    }
+    appts.filter(a => a.doctor_id === d.id).forEach(a => {
+      const m = toMin(a.start.slice(11)) - start;
+      col.append(h("button", { class: `appt ${a.status}`, style: { top: m * per + 2 + "px", height: Math.max(a.duration_min * per - 4, 30) + "px", "--c": a.doctor_color },
+          onclick: () => apptView(a.id) },
+        h("span", { class: "t" }, `${a.start.slice(11)}–${fromMin(toMin(a.start.slice(11)) + a.duration_min)} · ${a.room_name || ""}`),
+        h("span", { class: "n" }, a.patient_name),
+        h("span", { class: "x" }, a.service_name || ""),
+        a.status === "confirmed" ? h("span", { class: "st pill s-confirmed", title: "Подтвердил" }, "✓") : null,
+        a.status === "no_show" ? h("span", { class: "st pill s-no_show" }, "не пришёл") : null));
+    });
+    if (DAY === now.slice(0, 10)) { const m = toMin(now.slice(11)) - start; if (m > 0 && m < end - start) col.append(h("div", { class: "nowline", style: { top: m * per + "px" } })); }
+    grid.append(col);
+  });
+  return h("div", { class: "sched-wrap" }, grid);
+}
+
+function dayList(appts) {
+  if (!appts.length) return h("div", { class: "panel empty" }, "Записей нет. Нажмите «+ Записать».");
+  const now = nowStr();
+  return h("div", { class: "dayl" }, appts.map(a => {
+    const end = fromMin(toMin(a.start.slice(11)) + a.duration_min), cur = a.start <= now && `${a.start.slice(0, 11)}${end}` > now;
+    const st = s => guard(async () => { await api("POST", `/api/appointments/${a.id}/status`, { status: s }); toast(REF.statuses[s]); viewSched(); });
+    return h("div", { class: `dcard ${a.status}`, style: { "--c": a.doctor_color } },
+      h("div", { class: "tm" }, a.start.slice(11), h("small", {}, "до " + end), cur ? h("small", { style: { color: "var(--bad)", fontWeight: 600 } }, "сейчас") : null),
+      h("div", { style: { minWidth: 0 } },
+        h("div", { class: "who" }, h("b", { role: "button", tabindex: 0, style: { cursor: "pointer" }, onclick: () => patientView(a.patient_id) }, a.patient_name), statusPill(a.status)),
+        h("div", { class: "meta" }, [a.service_name || "Приём", a.doctor_name, a.room_name, a.patient_phone].filter(Boolean).join(" · ")),
+        a.notes ? h("div", { class: "meta" }, "📝 " + a.notes) : null,
+        h("div", { class: "acts" },
+          a.status !== "done" && a.status !== "cancelled" ? h("button", { class: "btn sm primary", onclick: () => st("done") }, "Пришёл") : null,
+          h("button", { class: "btn sm", onclick: () => noteEditor({ appointment: a }) }, "Протокол"),
+          h("button", { class: "btn sm", onclick: () => guard(async () => { const pl = await api("POST", "/api/plans", { patient_id: a.patient_id, doctor_id: a.doctor_id }); planEditor(pl.id); }) }, "Смета"),
+          h("button", { class: "btn sm", onclick: () => payDialog(a.patient_id, a.id, a.price, viewSched) }, "Оплата"),
+          h("button", { class: "btn sm ghost", onclick: () => apptView(a.id) }, "Ещё…"))));
+  }));
+}
+
+// ---------- шторка ----------
+function sheet(title, body, onClose) {
+  const close = () => { if (!scrim.isConnected) return; scrim.remove(); document.removeEventListener("keydown", esc);
+    const i = SHEETS.indexOf(close); if (i >= 0) SHEETS.splice(i, 1);
+    const TGW = window.Telegram?.WebApp; if (TGW?.BackButton && !SHEETS.length) TGW.BackButton.hide();
+    onClose && onClose(); };
+  const esc = e => { if (e.key === "Escape") close(); };
+  const scrim = h("div", { class: "scrim", onclick: e => { if (e.target === scrim) close(); } },
+    h("div", { class: "sheet", role: "dialog", "aria-modal": "true", "aria-label": title },
+      h("div", { class: "sheet-hd" }, h("h3", {}, title), h("button", { class: "icon-btn", "aria-label": "Закрыть", onclick: close }, "✕")),
+      h("div", { class: "sheet-bd" }, body)));
+  document.addEventListener("keydown", esc);
+  document.body.append(scrim);
+  const TGW = window.Telegram?.WebApp;
+  if (TGW?.initData && TGW.BackButton) { SHEETS.push(close); TGW.BackButton.show(); }
+  return close;
+}
+const SHEETS = [];
+(function tgBack() {
+  const t = setInterval(() => { const TGW = window.Telegram?.WebApp; if (!TGW?.BackButton) return; clearInterval(t);
+    TGW.BackButton.onClick(() => { const c = SHEETS.pop(); c && c(); }); }, 300);
+  setTimeout(() => clearInterval(t), 15000);
+})();
+
+async function apptView(id) {
+  const all = await api("GET", `/api/appointments?day=${DAY}`);
+  let a = all.find(x => x.id === id); if (!a) return;
+  const card = await api("GET", `/api/patients/${a.patient_id}`);
+  const err = h("div", { class: "err" });
+  const setSt = s => guard(async () => { await api("POST", `/api/appointments/${id}/status`, { status: s }); close(); toast(REF.statuses[s]); viewSched(); }, err);
+  const close = sheet(a.patient_name, [
+    h("div", {}, statusPill(a.status)),
+    h("dl", { class: "kv" },
+      h("dt", {}, "Когда"), h("dd", {}, `${ruDay(a.start.slice(0, 10))}, ${a.start.slice(11)} (${a.duration_min} мин)`),
+      h("dt", {}, "Врач"), h("dd", {}, a.doctor_name),
+      h("dt", {}, "Кабинет"), h("dd", {}, a.room_name || "—"),
+      h("dt", {}, "Услуга"), h("dd", {}, a.service_name || "—"),
+      h("dt", {}, "Стоимость"), h("dd", { class: "num" }, money(a.price)),
+      h("dt", {}, "Телефон"), h("dd", { class: "mono" }, a.patient_phone || "—"),
+      h("dt", {}, "Telegram"), h("dd", {}, a.patient_tg ? "подписан — напоминание придёт в бот" : "не подписан — напомнить звонком"),
+      card.debt > 0 ? [h("dt", {}, "Долг"), h("dd", {}, h("span", { class: "pill debt" }, money(card.debt)))] : null,
+      a.notes ? [h("dt", {}, "Заметка"), h("dd", {}, a.notes)] : null,
+      card.notes ? [h("dt", {}, "Важно"), h("dd", { style: { color: "var(--bad)" } }, card.notes)] : null),
+    h("div", {}, h("h2", {}, "Отметить"), h("div", { class: "actions" },
+      h("button", { class: "btn primary", onclick: () => setSt("done") }, "Пришёл"),
+      h("button", { class: "btn", onclick: () => setSt("confirmed") }, "Подтвердил"),
+      h("button", { class: "btn", onclick: () => setSt("no_show") }, "Не пришёл"),
+      h("button", { class: "btn danger", onclick: () => setSt("cancelled") }, "Отменить"))),
+    h("div", { class: "actions" },
+      h("button", { class: "btn", onclick: () => { close(); payDialog(a.patient_id, a.id, Math.max(card.debt, a.status === "done" ? 0 : a.price), viewSched); } }, "Принять оплату"),
+      h("button", { class: "btn", onclick: () => { close(); apptSheet({ edit: a }); } }, "Перенести / изменить"),
+      h("button", { class: "btn", onclick: () => { close(); noteEditor({ appointment: a }); } }, "Протокол приёма"),
+      h("button", { class: "btn", onclick: () => { close(); patientView(a.patient_id); } }, "Карта пациента"),
+      h("button", { class: "btn", onclick: () => guard(async () => { const pl = await api("POST", "/api/plans", { patient_id: a.patient_id, doctor_id: a.doctor_id }); close(); planEditor(pl.id); }) }, "Новая смета")),
+    err]);
+}
+
+// ---------- новая запись / изменение ----------
+async function apptSheet({ day, time, doctor_id, patient, edit }) {
+  const st = { patient_id: edit?.patient_id || patient?.id || null, patient_name: edit?.patient_name || patient?.name || "",
+    doctor_id: edit?.doctor_id || doctor_id || REF.doctors[0]?.id, service_id: edit?.service_id || "", day: edit?.start.slice(0, 10) || day || iso(new Date()),
+    time: edit?.start.slice(11) || time || "", newName: "", newPhone: "", notes: edit?.notes || "", price: edit ? edit.price : "" };
+  const err = h("div", { class: "err" });
+  const priceIn = h("input", { class: "f", id: "aPrice", inputmode: "numeric", value: edit ? edit.price : "", oninput: e => st.price = e.target.value });
+  const patBox = h("div", { style: { display: "grid", gap: "8px" } });
+  const slotBox = h("div");
+  const dur = () => REF.services.find(s => s.id === +st.service_id)?.duration_min || REF.slot;
+
+  function drawPatient() {
+    patBox.replaceChildren();
+    if (st.patient_id) {
+      patBox.append(h("div", { class: "row panel" }, h("span", { class: "avatar" }, initials(st.patient_name)), h("div", { class: "main" }, h("b", {}, st.patient_name)),
+        edit ? null : h("button", { class: "btn sm", onclick: () => { st.patient_id = null; drawPatient(); } }, "Сменить")));
+      return;
+    }
+    const results = h("div", { class: "panel list", hidden: true });
+    const q = h("input", { class: "f", id: "patQ", placeholder: "Имя или телефон пациента", autocomplete: "off", oninput: async e => {
+      const v = e.target.value.trim(); if (v.length < 2) { results.hidden = true; return; }
+      const list = await api("GET", `/api/patients?q=${encodeURIComponent(v)}`);
+      results.replaceChildren(...list.slice(0, 6).map(p => h("button", { class: "row", onclick: () => { st.patient_id = p.id; st.patient_name = p.name; drawPatient(); } },
+        h("span", { class: "avatar" }, initials(p.name)), h("div", { class: "main" }, h("b", {}, p.name), h("span", { class: "mono" }, p.phone)))));
+      results.hidden = !list.length;
+    } });
+    patBox.append(h("label", { class: "fl" }, "Пациент", q), results,
+      h("div", { class: "fgrid" },
+        h("label", { class: "fl" }, "или новый: ФИО", h("input", { class: "f", id: "newName", value: st.newName, oninput: e => st.newName = e.target.value })),
+        h("label", { class: "fl" }, "Телефон", h("input", { class: "f", id: "newPhone", inputmode: "tel", placeholder: "0700 123 456", value: st.newPhone, oninput: e => st.newPhone = e.target.value }))));
+  }
+  async function drawSlots() {
+    slotBox.replaceChildren(h("div", { class: "muted" }, "Загружаю свободное время…"));
+    let free = await api("GET", `/api/slots?doctor_id=${st.doctor_id}&day=${st.day}&dur=${dur()}`);
+    if (edit && edit.start.slice(0, 10) === st.day && edit.doctor_id === +st.doctor_id && !free.includes(edit.start.slice(11))) free = [...free, edit.start.slice(11)].sort();
+    if (st.time && !free.includes(st.time)) st.time = "";
+    slotBox.replaceChildren(h("h2", {}, `Свободно · ${dur()} мин`),
+      free.length ? h("div", { class: "slots" }, free.map(t => h("button", { "aria-pressed": st.time === t ? "true" : "false", onclick: () => { st.time = t; drawSlots(); } }, t)))
+        : h("div", { class: "muted" }, "На этот день мест нет — выберите другой день или врача."));
+  }
+  const save = h("button", { class: "btn primary", onclick: () => guard(async () => {
+    if (!st.time) throw new Error("Выберите время");
+    const body = { patient_id: st.patient_id, doctor_id: +st.doctor_id, start: `${st.day} ${st.time}`, service_id: st.service_id ? +st.service_id : null, notes: st.notes,
+      price: st.price === "" ? null : +st.price };
+    if (!st.patient_id) { if (!st.newName.trim()) throw new Error("Выберите пациента или впишите нового"); body.new_patient = { name: st.newName, phone: st.newPhone }; }
+    const a = edit ? await api("PUT", `/api/appointments/${edit.id}`, body) : await api("POST", "/api/appointments", body);
+    close(); toast(edit ? "Запись изменена" : `Записали: ${a.patient_name}, ${a.start.slice(11)}`); DAY = st.day; if (TAB === "sched") viewSched();
+  }, err) }, edit ? "Сохранить" : "Записать");
+
+  drawPatient();
+  const close = sheet(edit ? "Изменить запись" : "Новая запись", [
+    patBox,
+    h("div", { class: "fgrid" },
+      h("label", { class: "fl" }, "Врач", h("select", { class: "f", id: "aDoc", onchange: e => { st.doctor_id = +e.target.value; drawSlots(); } },
+        REF.doctors.map(d => h("option", { value: d.id, selected: d.id === +st.doctor_id }, `${d.name} — ${d.specialty}`)))),
+      h("label", { class: "fl" }, "Услуга", h("select", { class: "f", id: "aSvc", onchange: e => { st.service_id = e.target.value; priceIn.placeholder = String(REF.services.find(s => s.id === +st.service_id)?.price ?? ""); drawSlots(); } },
+        h("option", { value: "" }, "— не выбрана —"), REF.services.map(s => h("option", { value: s.id, selected: s.id === +st.service_id }, `${s.name} · ${money(s.price)}`)))),
+      h("label", { class: "fl" }, "Дата", h("input", { type: "date", class: "f", id: "aDay", value: st.day, onchange: e => { st.day = e.target.value; drawSlots(); } })),
+      h("label", { class: "fl" }, "Цена (если отличается)", priceIn)),
+    slotBox,
+    h("label", { class: "fl" }, "Заметка", h("textarea", { class: "f", id: "aNotes", oninput: e => st.notes = e.target.value }, st.notes)),
+    err, h("div", { class: "actions" }, save)]);
+  drawSlots();
+}
+
+// ---------- оплата ----------
+function payDialog(pid, aid, suggest, after) {
+  const err = h("div", { class: "err" });
+  let method = "cash";
+  const amt = h("input", { class: "f", id: "payAmt", inputmode: "numeric", value: suggest > 0 ? suggest : "", placeholder: "Сумма" });
+  const mBox = h("div", { class: "chips" });
+  const drawM = () => mBox.replaceChildren(...Object.entries(REF.methods).map(([k, v]) => h("button", { class: "chip", "aria-pressed": method === k ? "true" : "false", onclick: () => { method = k; drawM(); } }, v)));
+  drawM();
+  const close = sheet("Оплата", [h("label", { class: "fl" }, `Сумма, ${REF.currency}`, amt), h("div", {}, h("h2", {}, "Способ"), mBox), err,
+    h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: () => guard(async () => {
+      const r = await api("POST", "/api/payments", { patient_id: pid, appointment_id: aid || null, amount: +String(amt.value).replace(/\D/g, ""), method });
+      close(); toast(r.debt > 0 ? `Принято. Остаток долга ${money(r.debt)}` : "Оплата принята, долга нет"); after && after();
+    }, err) }, "Принять"))]);
+  setTimeout(() => amt.focus(), 50);
+}
+
+// ================= пациенты =================
+let PQ = "";
+async function viewPatients() {
+  const listBox = h("div", { class: "panel list" });
+  const draw = async () => {
+    const list = await api("GET", `/api/patients?q=${encodeURIComponent(PQ)}`);
+    const debts = Object.fromEntries((await api("GET", "/api/debtors")).map(d => [d.id, d.debt]));
+    listBox.replaceChildren(...(list.length ? list.map(p => h("button", { class: "row", onclick: () => patientView(p.id) },
+      h("span", { class: "avatar" }, initials(p.name)),
+      h("div", { class: "main" }, h("b", {}, p.name), h("span", { class: "mono" }, p.phone || "без телефона"),
+        p.last_visit ? h("span", {}, ` · визит ${p.last_visit.slice(8, 10)}.${p.last_visit.slice(5, 7)}`) : null),
+      debts[p.id] ? h("span", { class: "pill debt num" }, money(debts[p.id])) : null,
+      p.tg_id ? h("span", { class: "pill s-confirmed", title: "Подключён Telegram" }, "TG") : null))
+      : [h("div", { class: "empty" }, "Никого не нашли")]));
+  };
+  app().replaceChildren(
+    h("div", { class: "bar" }, h("h1", { class: "grow" }, "Пациенты"), h("button", { class: "btn primary", onclick: newPatient }, "+ Новый пациент")),
+    h("div", { class: "bar" }, h("input", { class: "f", id: "pSearch", type: "search", placeholder: "Поиск по имени или телефону", value: PQ,
+      oninput: e => { PQ = e.target.value; clearTimeout(viewPatients.t); viewPatients.t = setTimeout(draw, 200); } })),
+    listBox);
+  draw();
+}
+function patientForm(p, onSave) {
+  const v = { name: p?.name || "", phone: p?.phone || "", birth_date: p?.birth_date || "", gender: p?.gender || "", notes: p?.notes || "" };
+  const gBtns = h("div", { class: "seg", role: "group", "aria-label": "Пол" });
+  const drawG = () => gBtns.replaceChildren(...[["m", "Мужской"], ["f", "Женский"]].map(([k, l]) =>
+    h("button", { type: "button", "aria-pressed": v.gender === k ? "true" : "false", onclick: () => { v.gender = v.gender === k ? "" : k; drawG(); } }, l)));
+  drawG();
+  const err = h("div", { class: "err" });
+  return [h("div", { class: "fgrid" },
+      h("label", { class: "fl full" }, "ФИО", h("input", { class: "f", id: "pfName", value: v.name, oninput: e => v.name = e.target.value })),
+      h("label", { class: "fl" }, "Телефон", h("input", { class: "f", id: "pfPhone", inputmode: "tel", value: v.phone, oninput: e => v.phone = e.target.value })),
+      h("div", { class: "fl", style: { display: "grid", gap: "6px", justifyItems: "start" } }, "Пол", gBtns),
+      h("label", { class: "fl" }, "Дата рождения", h("input", { class: "f", id: "pfBirth", type: "date", value: v.birth_date, oninput: e => v.birth_date = e.target.value })),
+      h("label", { class: "fl full" }, "Важно знать (аллергии, особенности)", h("textarea", { class: "f", id: "pfNotes", oninput: e => v.notes = e.target.value }, v.notes))),
+    err, h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: () => guard(() => { if (!v.name.trim()) throw new Error("Впишите ФИО"); return onSave(v); }, err) }, "Сохранить"))];
+}
+function newPatient() {
+  const close = sheet("Новый пациент", patientForm(null, async v => { const p = await api("POST", "/api/patients", v); close(); toast("Пациент добавлен"); patientView(p.id); if (TAB === "pat") viewPatients(); }));
+}
+
+const TOOTH = { caries: ["К", "Кариес", "#c0563b"], filling: ["П", "Пломба", "#4a63b5"], canal: ["Э", "Каналы", "#8a5bb0"],
+  crown: ["Кр", "Коронка", "#a07a12"], implant: ["И", "Имплант", "#2c7a4b"], missing: ["×", "Удалён", "#6b7672"] };
+function teethChart(p, onChange) {
+  let teeth = {}; try { teeth = JSON.parse(p.teeth || "{}"); } catch (e) {}
+  let tool = "caries";
+  const wrap = h("div", { style: { display: "grid", gap: "10px" } });
+  const draw = () => {
+    const jaw = nums => h("div", { class: "jaw" }, nums.map((n, i) => { const s = teeth[n]; const def = TOOTH[s];
+      return h("button", { class: "tooth" + (i === 8 ? " mid" : ""), "data-s": s || null, style: def ? { "--tc": def[2] } : null, title: def ? `${n}: ${def[1]}` : `Зуб ${n}`,
+        onclick: () => { teeth[n] === tool ? delete teeth[n] : teeth[n] = tool; draw(); onChange(teeth); } },
+        h("span", { class: "mk" }, def ? def[0] : ""), h("span", { class: "no" }, n)); }));
+    wrap.replaceChildren(
+      h("div", { class: "legend" }, Object.entries(TOOTH).map(([k, [m, label, c]]) => h("button", { "aria-pressed": tool === k ? "true" : "false", style: { "--tc": c }, onclick: () => { tool = k; draw(); } }, h("i", {}, m), label))),
+      h("div", { class: "teeth" },
+        jaw([18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]),
+        jaw([48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38])),
+      h("div", { class: "muted", style: { fontSize: "13px" } }, "Выберите отметку, затем нажмите на зуб. Повторное нажатие снимает отметку. Нумерация FDI."));
+  };
+  draw(); return wrap;
+}
+async function patientView(pid) {
+  const p = await api("GET", `/api/patients/${pid}`);
+  let saveT;
+  const visits = [...p.appointments].reverse();
+  const close = sheet(p.name, [
+    h("div", { class: "kpis", style: { gridTemplateColumns: "repeat(3,minmax(0,1fr))", margin: 0 } },
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Оказано"), h("div", { class: "v", style: { fontSize: "18px" } }, money(p.charged))),
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Оплачено"), h("div", { class: "v", style: { fontSize: "18px" } }, money(p.paid))),
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Долг"), h("div", { class: "v", style: { fontSize: "18px", color: p.debt > 0 ? "var(--bad)" : "var(--ok)" } }, money(Math.max(p.debt, 0))))),
+    h("div", { class: "actions" },
+      h("button", { class: "btn primary", onclick: () => { close(); apptSheet({ patient: p }); } }, "Записать"),
+      h("button", { class: "btn", onclick: () => { close(); payDialog(p.id, null, p.debt, () => patientView(p.id)); } }, "Принять оплату"),
+      h("button", { class: "btn", onclick: () => { close(); const c2 = sheet("Изменить данные", patientForm(p, async v => { await api("PUT", `/api/patients/${p.id}`, v); c2(); toast("Сохранено"); patientView(p.id); })); } }, "Изменить"),
+      h("button", { class: "btn", onclick: () => { close(); noteEditor({ patient: p }); } }, "+ Протокол"),
+      p.tg_id ? h("button", { class: "btn", onclick: () => messageDialog(p) }, "Написать пациенту") : null,
+      REF.ai ? h("button", { class: "btn", onclick: () => { close(); openAI({ patient_id: p.id, patient_name: p.name }); } }, "✨ Спросить ИИ") : null),
+    h("dl", { class: "kv" },
+      h("dt", {}, "Телефон"), h("dd", { class: "mono" }, p.phone || "—"),
+      h("dt", {}, "Пол"), h("dd", {}, { m: "Мужской", f: "Женский" }[p.gender] || "—"),
+      h("dt", {}, "Дата рожд."), h("dd", {}, p.birth_date || "—"),
+      h("dt", {}, "Telegram"), h("dd", {}, p.tg_id ? "подписан на уведомления" : "не подписан — дайте ссылку на бот, пациент нажмёт «Подписаться»"),
+      p.tg_id ? h("dt", {}, "Советы по уходу") : null,
+      p.tg_id ? h("dd", {}, p.care ? "получает утром и вечером " : "не получает ",
+        h("button", { class: "btn sm ghost", style: { marginLeft: "4px" }, onclick: e => guard(async () => {
+          await api("POST", `/api/patients/${p.id}/care`, { action: p.care ? "off" : "offer" });
+          toast(p.care ? "Советы отключены" : "Пациенту отправлен вопрос — он сам нажмёт «Да»");
+          if (p.care) { close(); patientView(p.id); } else e.target.disabled = true;
+        }) }, p.care ? "Отключить" : "Предложить в Telegram")) : null,
+      p.notes ? [h("dt", {}, "Важно"), h("dd", { style: { color: "var(--bad)" } }, p.notes)] : null),
+    notesBlock(p, () => close()),
+    plansBlock(p, () => close()),
+    filesBlock(p),
+    h("div", {}, h("h2", {}, "Зубная формула"), teethChart(p, t => { clearTimeout(saveT); saveT = setTimeout(() => guard(() => api("PUT", `/api/patients/${p.id}/teeth`, { teeth: t })), 500); })),
+    h("div", {}, h("h2", {}, `Визиты · ${visits.length}`), visits.length ? h("div", { class: "panel list" }, visits.map(a => h("div", { class: "row" },
+      h("span", { class: "dot", style: { background: a.doctor_color } }),
+      h("div", { class: "main" }, h("b", {}, a.service_name || "Приём"), h("span", {}, `${ruDay(a.start.slice(0, 10))}, ${a.start.slice(11)} · ${a.doctor_name}`)),
+      h("span", { class: "num" }, money(a.price)), statusPill(a.status)))) : h("div", { class: "muted" }, "Визитов пока нет")),
+    h("div", {}, h("h2", {}, "Оплаты"), p.payments.length ? h("div", { class: "panel list" }, p.payments.map(y => h("div", { class: "row" },
+      h("div", { class: "main" }, h("b", { class: "num" }, money(y.amount)), h("span", {}, `${y.created_at.slice(0, 10)} · ${REF.methods[y.method] || y.method}`))))) : h("div", { class: "muted" }, "Оплат пока нет"))]);
+}
+
+
+
+// ================= эскиз зубов — тот же, что в PDF =================
+const TG = /*TEETH_GEO*/{"W":40,"H":100,"CX":20,"CERV":60,"OCC":98,"upper":[18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28],"lower":[48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38],"teeth":{"18":{"crown":[["M",8.5,60],["C",6,65,5,72,5.3,80],["C",5.3,91,7,97,13.100000000000001,98],["C",17,98,18,95,20,95],["C",22,95,23,98,26.9,98],["C",33,97,34.7,91,34.7,80],["C",35,72,34,65,31.5,60],["C",27.5,56.5,12.5,56.5,8.5,60],["Z"]],"roots":[[["M",15,61],["C",14.5,39,17.5,24,20,16],["C",22.5,24,25.5,39,25,61],["Z"]],[["M",8.5,61],["C",8,39,8.5,30,11,22],["C",13.5,30,19,39,18.5,61],["Z"]],[["M",21.5,61],["C",21,39,26.5,30,29,22],["C",31.5,30,32,39,31.5,61],["Z"]]],"canals":[[20,64,20,22],[13.5,64,11,28],[26.5,64,29,28]],"fill":[20,85,7.5,6]},"17":{"crown":[["M",7,60],["C",4.5,65,3.5,72,3.8,80],["C",3.8,91,5.5,97,12.41,98],["C",16.7,98,18,95,20,95],["C",22,95,23.3,98,27.59,98],["C",34.5,97,36.2,91,36.2,80],["C",36.5,72,35.5,65,33,60],["C",29,56.5,11,56.5,7,60],["Z"]],"roots":[[["M",15,61],["C",14.5,39,17.5,18,20,10],["C",22.5,18,25.5,39,25,61],["Z"]],[["M",7,61],["C",6.5,39,7.6,24,10.1,16],["C",12.6,24,19,39,18.5,61],["Z"]],[["M",21.5,61],["C",21,39,27.4,24,29.9,16],["C",32.4,24,33.5,39,33,61],["Z"]]],"canals":[[20,64,20,16],[12.75,64,10.1,22],[27.25,64,29.9,22]],"fill":[20,85,8.25,6]},"16":{"crown":[["M",6,60],["C",3.5,65,2.5,72,2.8,80],["C",2.8,91,4.5,97,11.950000000000001,98],["C",16.5,98,18,95,20,95],["C",22,95,23.5,98,28.049999999999997,98],["C",35.5,97,37.2,91,37.2,80],["C",37.5,72,36.5,65,34,60],["C",30,56.5,10,56.5,6,60],["Z"]],"roots":[[["M",15,61],["C",14.5,39,17.5,16,20,8],["C",22.5,16,25.5,39,25,61],["Z"]],[["M",6,61],["C",5.5,39,7,22,9.5,14],["C",12,22,19,39,18.5,61],["Z"]],[["M",21.5,61],["C",21,39,28,22,30.5,14],["C",33,22,34.5,39,34,61],["Z"]]],"canals":[[20,64,20,14],[12.25,64,9.5,20],[27.75,64,30.5,20]],"fill":[20,85,8.75,6]},"15":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.5,90,10,97,14.280000000000001,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.72,98],["C",30,97,32.5,90,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",11,61],["C",10.5,39,17.5,18,20,10],["C",22.5,18,29.5,39,29,61],["Z"]]],"canals":[[20,64,20,16]],"fill":[20,85,5.72,6]},"14":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.5,90,10,97,14.280000000000001,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.72,98],["C",30,97,32.5,90,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",10.5,61],["C",10,39,13.5,20,16,12],["C",18.5,20,19.7,39,19.2,61],["Z"]],[["M",20.8,61],["C",20.3,39,21.5,20,24,12],["C",26.5,20,30,39,29.5,61],["Z"]]],"canals":[[14.85,64,16,18],[25.15,64,24,18]],"fill":[20,85,5.72,6]},"13":{"crown":[["M",11,60],["C",8.5,65,7.5,72,7.8,80],["C",8.5,86,12.5,92,18,97.4],["C",19.2,98.4,20.8,98.4,22,97.4],["C",27.5,92,31.5,86,32.2,80],["C",32.5,72,31.5,65,29,60],["C",25,56.5,15,56.5,11,60],["Z"]],"roots":[[["M",11.5,61],["C",11,39,17.5,10,20,2],["C",22.5,10,29,39,28.5,61],["Z"]]],"canals":[[20,64,20,8]],"fill":[20,85,5.5,6]},"12":{"crown":[["M",12.5,60],["C",10,65,9,72,9.3,80],["C",9.8,92,10,97,13,98],["L",27,98],["C",30,97,30.2,92,30.7,80],["C",31,72,30,65,27.5,60],["C",23.5,56.5,16.5,56.5,12.5,60],["Z"]],"roots":[[["M",13,61],["C",12.5,39,17.5,20,20,12],["C",22.5,20,27.5,39,27,61],["Z"]]],"canals":[[20,64,20,18]],"fill":[20,85,4.84,6]},"11":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.8,92,8,97,11,98],["L",29,98],["C",32,97,32.2,92,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",11,61],["C",10.5,39,17.5,16,20,8],["C",22.5,16,29.5,39,29,61],["Z"]]],"canals":[[20,64,20,14]],"fill":[20,85,5.72,6]},"21":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.8,92,8,97,11,98],["L",29,98],["C",32,97,32.2,92,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",11,61],["C",10.5,39,17.5,16,20,8],["C",22.5,16,29.5,39,29,61],["Z"]]],"canals":[[20,64,20,14]],"fill":[20,85,5.72,6]},"22":{"crown":[["M",12.5,60],["C",10,65,9,72,9.3,80],["C",9.8,92,10,97,13,98],["L",27,98],["C",30,97,30.2,92,30.7,80],["C",31,72,30,65,27.5,60],["C",23.5,56.5,16.5,56.5,12.5,60],["Z"]],"roots":[[["M",13,61],["C",12.5,39,17.5,20,20,12],["C",22.5,20,27.5,39,27,61],["Z"]]],"canals":[[20,64,20,18]],"fill":[20,85,4.84,6]},"23":{"crown":[["M",11,60],["C",8.5,65,7.5,72,7.8,80],["C",8.5,86,12.5,92,18,97.4],["C",19.2,98.4,20.8,98.4,22,97.4],["C",27.5,92,31.5,86,32.2,80],["C",32.5,72,31.5,65,29,60],["C",25,56.5,15,56.5,11,60],["Z"]],"roots":[[["M",11.5,61],["C",11,39,17.5,10,20,2],["C",22.5,10,29,39,28.5,61],["Z"]]],"canals":[[20,64,20,8]],"fill":[20,85,5.5,6]},"24":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.5,90,10,97,14.280000000000001,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.72,98],["C",30,97,32.5,90,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",10.5,61],["C",10,39,13.5,20,16,12],["C",18.5,20,19.7,39,19.2,61],["Z"]],[["M",20.8,61],["C",20.3,39,21.5,20,24,12],["C",26.5,20,30,39,29.5,61],["Z"]]],"canals":[[14.85,64,16,18],[25.15,64,24,18]],"fill":[20,85,5.72,6]},"25":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.5,90,10,97,14.280000000000001,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.72,98],["C",30,97,32.5,90,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",11,61],["C",10.5,39,17.5,18,20,10],["C",22.5,18,29.5,39,29,61],["Z"]]],"canals":[[20,64,20,16]],"fill":[20,85,5.72,6]},"26":{"crown":[["M",6,60],["C",3.5,65,2.5,72,2.8,80],["C",2.8,91,4.5,97,11.950000000000001,98],["C",16.5,98,18,95,20,95],["C",22,95,23.5,98,28.049999999999997,98],["C",35.5,97,37.2,91,37.2,80],["C",37.5,72,36.5,65,34,60],["C",30,56.5,10,56.5,6,60],["Z"]],"roots":[[["M",15,61],["C",14.5,39,17.5,16,20,8],["C",22.5,16,25.5,39,25,61],["Z"]],[["M",6,61],["C",5.5,39,7,22,9.5,14],["C",12,22,19,39,18.5,61],["Z"]],[["M",21.5,61],["C",21,39,28,22,30.5,14],["C",33,22,34.5,39,34,61],["Z"]]],"canals":[[20,64,20,14],[12.25,64,9.5,20],[27.75,64,30.5,20]],"fill":[20,85,8.75,6]},"27":{"crown":[["M",7,60],["C",4.5,65,3.5,72,3.8,80],["C",3.8,91,5.5,97,12.41,98],["C",16.7,98,18,95,20,95],["C",22,95,23.3,98,27.59,98],["C",34.5,97,36.2,91,36.2,80],["C",36.5,72,35.5,65,33,60],["C",29,56.5,11,56.5,7,60],["Z"]],"roots":[[["M",15,61],["C",14.5,39,17.5,18,20,10],["C",22.5,18,25.5,39,25,61],["Z"]],[["M",7,61],["C",6.5,39,7.6,24,10.1,16],["C",12.6,24,19,39,18.5,61],["Z"]],[["M",21.5,61],["C",21,39,27.4,24,29.9,16],["C",32.4,24,33.5,39,33,61],["Z"]]],"canals":[[20,64,20,16],[12.75,64,10.1,22],[27.25,64,29.9,22]],"fill":[20,85,8.25,6]},"28":{"crown":[["M",8.5,60],["C",6,65,5,72,5.3,80],["C",5.3,91,7,97,13.100000000000001,98],["C",17,98,18,95,20,95],["C",22,95,23,98,26.9,98],["C",33,97,34.7,91,34.7,80],["C",35,72,34,65,31.5,60],["C",27.5,56.5,12.5,56.5,8.5,60],["Z"]],"roots":[[["M",15,61],["C",14.5,39,17.5,24,20,16],["C",22.5,24,25.5,39,25,61],["Z"]],[["M",8.5,61],["C",8,39,8.5,30,11,22],["C",13.5,30,19,39,18.5,61],["Z"]],[["M",21.5,61],["C",21,39,26.5,30,29,22],["C",31.5,30,32,39,31.5,61],["Z"]]],"canals":[[20,64,20,22],[13.5,64,11,28],[26.5,64,29,28]],"fill":[20,85,7.5,6]},"48":{"crown":[["M",7.5,60],["C",5,65,4,72,4.3,80],["C",4.3,91,6,97,12.64,98],["C",16.8,98,18,95,20,95],["C",22,95,23.2,98,27.36,98],["C",34,97,35.7,91,35.7,80],["C",36,72,35,65,32.5,60],["C",28.5,56.5,11.5,56.5,7.5,60],["Z"]],"roots":[[["M",7.5,61],["C",7,39,8.54,30,11.04,22],["C",13.54,30,18.5,39,18,61],["Z"]],[["M",22,61],["C",21.5,39,26.46,30,28.96,22],["C",31.46,30,33,39,32.5,61],["Z"]]],"canals":[[12.75,64,11.04,28],[27.25,64,28.96,28]],"fill":[20,85,8,6]},"47":{"crown":[["M",6.5,60],["C",4,65,3,72,3.3,80],["C",3.3,91,5,97,12.18,98],["C",16.6,98,18,95,20,95],["C",22,95,23.4,98,27.82,98],["C",35,97,36.7,91,36.7,80],["C",37,72,36,65,33.5,60],["C",29.5,56.5,10.5,56.5,6.5,60],["Z"]],"roots":[[["M",6.5,61],["C",6,39,7.979999999999999,24,10.479999999999999,16],["C",12.979999999999999,24,18.5,39,18,61],["Z"]],[["M",22,61],["C",21.5,39,27.020000000000003,24,29.520000000000003,16],["C",32.02,24,34,39,33.5,61],["Z"]]],"canals":[[12.25,64,10.479999999999999,22],[27.75,64,29.520000000000003,22]],"fill":[20,85,8.5,6]},"46":{"crown":[["M",5.5,60],["C",3,65,2,72,2.3,80],["C",2.3,91,4,97,11.72,98],["C",16.4,98,18,95,20,95],["C",22,95,23.6,98,28.28,98],["C",36,97,37.7,91,37.7,80],["C",38,72,37,65,34.5,60],["C",30.5,56.5,9.5,56.5,5.5,60],["Z"]],"roots":[[["M",5.5,61],["C",5,39,7.419999999999998,22,9.919999999999998,14],["C",12.419999999999998,22,18.5,39,18,61],["Z"]],[["M",22,61],["C",21.5,39,27.580000000000002,22,30.080000000000002,14],["C",32.58,22,35,39,34.5,61],["Z"]]],"canals":[[11.75,64,9.919999999999998,20],[28.25,64,30.080000000000002,20]],"fill":[20,85,9,6]},"45":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.5,90,10,97,14.280000000000001,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.72,98],["C",30,97,32.5,90,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",11,61],["C",10.5,39,17.5,18,20,10],["C",22.5,18,29.5,39,29,61],["Z"]]],"canals":[[20,64,20,16]],"fill":[20,85,5.72,6]},"44":{"crown":[["M",11,60],["C",8.5,65,7.5,72,7.8,80],["C",8,90,10.5,97,14.5,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.5,98],["C",29.5,97,32,90,32.2,80],["C",32.5,72,31.5,65,29,60],["C",25,56.5,15,56.5,11,60],["Z"]],"roots":[[["M",11.5,61],["C",11,39,17.5,18,20,10],["C",22.5,18,29,39,28.5,61],["Z"]]],"canals":[[20,64,20,16]],"fill":[20,85,5.5,6]},"43":{"crown":[["M",11.5,60],["C",9,65,8,72,8.3,80],["C",9,86,13,92,18,97.4],["C",19.2,98.4,20.8,98.4,22,97.4],["C",27,92,31,86,31.7,80],["C",32,72,31,65,28.5,60],["C",24.5,56.5,15.5,56.5,11.5,60],["Z"]],"roots":[[["M",12,61],["C",11.5,39,17.5,10,20,2],["C",22.5,10,28.5,39,28,61],["Z"]]],"canals":[[20,64,20,8]],"fill":[20,85,5.28,6]},"42":{"crown":[["M",13.5,60],["C",11,65,10,72,10.3,80],["C",10.8,92,11,97,14,98],["L",26,98],["C",29,97,29.2,92,29.7,80],["C",30,72,29,65,26.5,60],["C",22.5,56.5,17.5,56.5,13.5,60],["Z"]],"roots":[[["M",14,61],["C",13.5,39,17.5,20,20,12],["C",22.5,20,26.5,39,26,61],["Z"]]],"canals":[[20,64,20,18]],"fill":[20,85,4.4,6]},"41":{"crown":[["M",14,60],["C",11.5,65,10.5,72,10.8,80],["C",11.3,92,11.5,97,14.5,98],["L",25.5,98],["C",28.5,97,28.7,92,29.2,80],["C",29.5,72,28.5,65,26,60],["C",22,56.5,18,56.5,14,60],["Z"]],"roots":[[["M",14.5,61],["C",14,39,17.5,16,20,8],["C",22.5,16,26,39,25.5,61],["Z"]]],"canals":[[20,64,20,14]],"fill":[20,85,4.18,6]},"31":{"crown":[["M",14,60],["C",11.5,65,10.5,72,10.8,80],["C",11.3,92,11.5,97,14.5,98],["L",25.5,98],["C",28.5,97,28.7,92,29.2,80],["C",29.5,72,28.5,65,26,60],["C",22,56.5,18,56.5,14,60],["Z"]],"roots":[[["M",14.5,61],["C",14,39,17.5,16,20,8],["C",22.5,16,26,39,25.5,61],["Z"]]],"canals":[[20,64,20,14]],"fill":[20,85,4.18,6]},"32":{"crown":[["M",13.5,60],["C",11,65,10,72,10.3,80],["C",10.8,92,11,97,14,98],["L",26,98],["C",29,97,29.2,92,29.7,80],["C",30,72,29,65,26.5,60],["C",22.5,56.5,17.5,56.5,13.5,60],["Z"]],"roots":[[["M",14,61],["C",13.5,39,17.5,20,20,12],["C",22.5,20,26.5,39,26,61],["Z"]]],"canals":[[20,64,20,18]],"fill":[20,85,4.4,6]},"33":{"crown":[["M",11.5,60],["C",9,65,8,72,8.3,80],["C",9,86,13,92,18,97.4],["C",19.2,98.4,20.8,98.4,22,97.4],["C",27,92,31,86,31.7,80],["C",32,72,31,65,28.5,60],["C",24.5,56.5,15.5,56.5,11.5,60],["Z"]],"roots":[[["M",12,61],["C",11.5,39,17.5,10,20,2],["C",22.5,10,28.5,39,28,61],["Z"]]],"canals":[[20,64,20,8]],"fill":[20,85,5.28,6]},"34":{"crown":[["M",11,60],["C",8.5,65,7.5,72,7.8,80],["C",8,90,10.5,97,14.5,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.5,98],["C",29.5,97,32,90,32.2,80],["C",32.5,72,31.5,65,29,60],["C",25,56.5,15,56.5,11,60],["Z"]],"roots":[[["M",11.5,61],["C",11,39,17.5,18,20,10],["C",22.5,18,29,39,28.5,61],["Z"]]],"canals":[[20,64,20,16]],"fill":[20,85,5.5,6]},"35":{"crown":[["M",10.5,60],["C",8,65,7,72,7.3,80],["C",7.5,90,10,97,14.280000000000001,98],["C",18,98,18.5,95,20,94.8],["C",21.5,95,22,98,25.72,98],["C",30,97,32.5,90,32.7,80],["C",33,72,32,65,29.5,60],["C",25.5,56.5,14.5,56.5,10.5,60],["Z"]],"roots":[[["M",11,61],["C",10.5,39,17.5,18,20,10],["C",22.5,18,29.5,39,29,61],["Z"]]],"canals":[[20,64,20,16]],"fill":[20,85,5.72,6]},"36":{"crown":[["M",5.5,60],["C",3,65,2,72,2.3,80],["C",2.3,91,4,97,11.72,98],["C",16.4,98,18,95,20,95],["C",22,95,23.6,98,28.28,98],["C",36,97,37.7,91,37.7,80],["C",38,72,37,65,34.5,60],["C",30.5,56.5,9.5,56.5,5.5,60],["Z"]],"roots":[[["M",5.5,61],["C",5,39,7.419999999999998,22,9.919999999999998,14],["C",12.419999999999998,22,18.5,39,18,61],["Z"]],[["M",22,61],["C",21.5,39,27.580000000000002,22,30.080000000000002,14],["C",32.58,22,35,39,34.5,61],["Z"]]],"canals":[[11.75,64,9.919999999999998,20],[28.25,64,30.080000000000002,20]],"fill":[20,85,9,6]},"37":{"crown":[["M",6.5,60],["C",4,65,3,72,3.3,80],["C",3.3,91,5,97,12.18,98],["C",16.6,98,18,95,20,95],["C",22,95,23.4,98,27.82,98],["C",35,97,36.7,91,36.7,80],["C",37,72,36,65,33.5,60],["C",29.5,56.5,10.5,56.5,6.5,60],["Z"]],"roots":[[["M",6.5,61],["C",6,39,7.979999999999999,24,10.479999999999999,16],["C",12.979999999999999,24,18.5,39,18,61],["Z"]],[["M",22,61],["C",21.5,39,27.020000000000003,24,29.520000000000003,16],["C",32.02,24,34,39,33.5,61],["Z"]]],"canals":[[12.25,64,10.479999999999999,22],[27.75,64,29.520000000000003,22]],"fill":[20,85,8.5,6]},"38":{"crown":[["M",7.5,60],["C",5,65,4,72,4.3,80],["C",4.3,91,6,97,12.64,98],["C",16.8,98,18,95,20,95],["C",22,95,23.2,98,27.36,98],["C",34,97,35.7,91,35.7,80],["C",36,72,35,65,32.5,60],["C",28.5,56.5,11.5,56.5,7.5,60],["Z"]],"roots":[[["M",7.5,61],["C",7,39,8.54,30,11.04,22],["C",13.54,30,18.5,39,18,61],["Z"]],[["M",22,61],["C",21.5,39,26.46,30,28.96,22],["C",31.46,30,33,39,32.5,61],["Z"]]],"canals":[[12.75,64,11.04,28],[27.25,64,28.96,28]],"fill":[20,85,8,6]}},"implant":{"body":[["M",14.5,61],["L",14.5,31],["C",14.5,23,16.5,18,20,18],["C",23.5,18,25.5,23,25.5,31],["L",25.5,61],["Z"]],"threads":[[13.5,56,26.5,54],[13.5,50,26.5,48],[13.5,44,26.5,42],[13.5,38,26.5,36],[13.5,32,26.5,30],[15,26,25,24]],"platform":[["M",13.5,60],["L",26.5,60],["L",26.5,62.5],["L",13.5,62.5],["Z"]]},"former":[["M",15.5,61.5],["L",24.5,61.5],["L",24.5,71.5],["C",24.5,74,15.5,74,15.5,71.5],["Z"]],"kinds":{"filling":["Пломба / лечение кариеса","#2f7fe0","#d6e6fb"],"canal":["Лечение каналов","#e0483e","#fbdedb"],"crown":["Коронка","#c99412","#f7e4a8"],"implant":["Имплант","#5f7184","#d9e0e7"],"former":["Формирователь десны","#12a594","#c9efe9"],"extract":["Удаление","#d23a3a","#f1f1f1"],"other":["Другое лечение","#7c4dff","#e6dcff"],"general":["Общие услуги (без зуба)","#7a8783","#eceff0"]},"keywords":[["extract",["удален","экстракц"]],["former",["формировател"]],["crown",["коронк","винир","вкладк","протез"]],["implant",["имплант"]],["canal",["канал","эндодонт","пульп","периодонт"]],["filling",["пломб","кариес","реставрац"]],["general",["чистк","гигиен","отбел","консульт","осмотр","снимок","рентген","анестез"]]]}/*END_TEETH_GEO*/;
+const T_LBL = 14, T_MR = 15, T_QG = 6;
+function detectKind(name) { const s = (name || "").toLowerCase(); for (const [k, ws] of TG.keywords) if (ws.some(w => s.includes(w))) return k; return "other"; }
+function itemKind(it) { const sv = (REF.services || []).find(s => s.id === +it.service_id); return it.kind || (sv && sv.kind) || detectKind(it.name); }
+const kindOf = it => it.teeth_list && it.teeth_list.length ? it.kind : "general";
+function teethSVG(items, opts = {}) {
+  const sel = opts.selected || new Set();
+  const per = {}; items.forEach(it => (it.teeth_list || []).forEach(t => (per[t] ||= []).push([it.num, it.kind])));
+  const W = TG.W, H = TG.H, rows = jaw => Math.max(1, Math.ceil(Math.max(0, ...jaw.map(t => (per[t] || []).length)) / 2));
+  const ru = rows(TG.upper), rl = rows(TG.lower);
+  const yU = T_LBL, yMid = T_LBL + H + 3 + ru * T_MR, yL = yMid + 3 + rl * T_MR, height = yL + H + T_LBL + 2, width = 16 * W + T_QG;
+  const xOf = i => i * W + (i >= 8 ? T_QG : 0), K = TG.kinds, LINE = "#8c9794", DARK = "#55615e";
+  const f = v => +(+v).toFixed(2), Y = (y0, y, flip) => f(y0 + (flip ? H - y : y));
+  const D = (cmds, x0, y0, flip) => cmds.map(c => { const v = c.slice(1), pts = [];
+    for (let i = 0; i < v.length; i += 2) pts.push(f(x0 + v[i]) + " " + Y(y0, v[i + 1], flip)); return c[0] + pts.join(" "); }).join("");
+  const P = (cmds, x0, y0, flip, fill, stroke, w = 0.9, dash) => `<path d="${D(cmds, x0, y0, flip)}" fill="${fill || "none"}" stroke="${stroke || "none"}" stroke-width="${w}" stroke-linejoin="round"${dash ? ` stroke-dasharray="${dash}"` : ""}/>`;
+  const L = (l, x0, y0, flip, c, w) => `<line x1="${f(x0 + l[0])}" y1="${Y(y0, l[1], flip)}" x2="${f(x0 + l[2])}" y2="${Y(y0, l[3], flip)}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`;
+  const tooth = (n, x0, y0, flip) => {
+    const g = TG.teeth[n], ks = new Set((per[n] || []).map(m => m[1]));
+    if (ks.has("general")) { ks.delete("general"); ks.add("other"); }
+    const st = ks.size ? DARK : LINE, ex = ks.has("extract"), base = ex ? "#f1f1f1" : ks.has("other") ? K.other[2] : "#ffffff";
+    let s = "";
+    if (ks.has("implant")) { const im = TG.implant; s += P(im.body, x0, y0, flip, K.implant[2], K.implant[1], 1.1);
+      im.threads.forEach(t => s += L(t, x0, y0, flip, K.implant[1], 0.9)); s += P(im.platform, x0, y0, flip, K.implant[1]); }
+    else { const c = ks.has("canal"); g.roots.forEach(r => s += P(r, x0, y0, flip, c ? K.canal[2] : base, c ? K.canal[1] : st));
+      if (c) g.canals.forEach(l => s += L(l, x0, y0, flip, K.canal[1], 1.8)); }
+    if (ks.has("implant") && !ks.has("crown")) { s += P(g.crown, x0, y0, flip, null, LINE, 0.8, "2 2");
+      if (ks.has("former")) s += P(TG.former, x0, y0, flip, K.former[1], K.former[1], 0.8); }
+    else { const cr = ks.has("crown"); s += P(g.crown, x0, y0, flip, cr ? K.crown[2] : base, cr ? K.crown[1] : st, cr ? 1.4 : 0.9);
+      if (ks.has("filling")) { const [fx, fy, rx, ry] = g.fill; s += `<ellipse cx="${f(x0 + fx)}" cy="${Y(y0, fy, flip)}" rx="${f(rx)}" ry="${ry}" fill="${K.filling[1]}"/>`; } }
+    if (ex) s += L([7, 8, 33, 92], x0, y0, flip, K.extract[1], 2.6) + L([33, 8, 7, 92], x0, y0, flip, K.extract[1], 2.6);
+    return s;
+  };
+  const mid = 8 * W + T_QG / 2;
+  let out = `<line x1="${mid}" y1="${yU - 2}" x2="${mid}" y2="${yL + H + 2}" stroke="#d6dedb" stroke-dasharray="3 3"/>`;
+  [[TG.upper, yU, false], [TG.lower, yL, true]].forEach(([jaw, y0, flip]) => jaw.forEach((n, i) => {
+    const x0 = xOf(i), t = String(n), marks = per[t] || [], on = sel.has(t), top = flip ? yMid : 0, bot = flip ? height : yMid;
+    out += `<g data-t="${t}"` + (opts.interactive ? ` class="tc-t" role="button" tabindex="0" aria-pressed="${on}" aria-label="Зуб ${t}"` : "") + ">";
+    out += `<rect x="${x0 + 1}" y="${top}" width="${W - 2}" height="${bot - top}" rx="6" fill="${on ? "#dcece7" : "transparent"}" stroke="${on ? "#16695a" : "none"}" stroke-width="1.2"/>`;
+    out += tooth(t, x0, y0, flip);
+    out += `<text x="${x0 + W / 2}" y="${flip ? yL + H + 11 : yU - 4}" text-anchor="middle" font-size="9" font-weight="${marks.length || on ? 700 : 400}" fill="${on ? "#16695a" : marks.length ? "#1b2422" : "#66736f"}">${t}</text>`;
+    marks.forEach(([num, kind], k) => { const row = Math.floor(k / 2), cnt = Math.min(2, marks.length - row * 2);
+      const cx = x0 + W / 2 + (cnt === 1 ? 0 : k % 2 ? 7 : -7), cy = flip ? yL - 3 - T_MR / 2 - row * T_MR : y0 + H + 3 + T_MR / 2 + row * T_MR;
+      out += `<circle cx="${cx}" cy="${cy}" r="6.3" fill="${K[kind][1]}"/><text x="${cx}" y="${cy + 3}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#fff">${num}</text>`; });
+    out += "</g>";
+  }));
+  const wrap = h("div", { class: "tchart" });
+  wrap.innerHTML = `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Схема зубов с планом лечения" style="display:block;font-family:Onest,system-ui,sans-serif">${out}</svg>`;
+  if (opts.interactive) {
+    const act = e => { const g = e.target.closest("[data-t]"); if (g) opts.onToggle(g.dataset.t); };
+    wrap.firstChild.addEventListener("click", act);
+    wrap.firstChild.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(e); } });
+  }
+  return wrap;
+}
+function legendEl(items) {
+  const used = []; items.forEach(it => { const k = kindOf(it); if (!used.includes(k)) used.push(k); });
+  return used.length ? h("div", { class: "tlegend" }, used.map(k => h("span", {}, h("i", { style: { background: TG.kinds[k][1] } }), TG.kinds[k][0]))) : null;
+}
+const numBadge = it => h("span", { class: "pnum", style: { background: TG.kinds[kindOf(it)][1] } }, it.num);
+
+// ================= сметы / планы лечения =================
+const PLAN_ST = { draft: "Черновик", sent: "Отправлен", agreed: "Согласован", done: "Выполнен", cancelled: "Отменён" };
+const PLAN_PILL = { draft: "s-scheduled", sent: "s-scheduled", agreed: "s-confirmed", done: "s-done", cancelled: "s-cancelled" };
+const teethOf = t => String(t || "").split(/[\s,;]+/).filter(x => /^[1-4][1-8]$/.test(x));
+function planCalc(pl) {
+  const items = (pl.items || []).map(it => { const tl = teethOf(it.teeth); const qty = Math.max(1, +it.qty || tl.length || 1);
+    return { ...it, teeth: tl.join(","), teeth_list: tl, qty, price: +it.price || 0, discount_pct: +it.discount_pct || 0,
+      total: Math.round(qty * (+it.price || 0) * (1 - (+it.discount_pct || 0) / 100)) }; })
+    .map(it => ({ ...it, stage: +it.stage || 1 })).sort((a, b) => a.stage - b.stage)
+    .map((it, i) => ({ ...it, num: i + 1, kind: itemKind(it) }));
+  const st = {}; items.forEach(it => (st[it.stage || 1] ||= []).push(it));
+  const stages = Object.keys(st).map(Number).sort((a, b) => a - b).map(k => ({ stage: k, items: st[k], total: st[k].reduce((s, i) => s + i.total, 0) }));
+  const subtotal = items.reduce((s, i) => s + i.total, 0), list_total = items.reduce((s, i) => s + i.qty * i.price, 0);
+  return { ...pl, items, stages, subtotal, list_total, total: Math.round(subtotal * (1 - (+pl.discount_pct || 0) / 100)),
+    teeth: [...new Set(items.flatMap(i => i.teeth_list))].sort() };
+}
+
+function plansBlock(p, close) {
+  const box = h("div", { style: { display: "grid", gap: "8px" } });
+  const draw = async () => {
+    const plans = await api("GET", `/api/patients/${p.id}/plans`);
+    box.replaceChildren(h("div", { class: "bar", style: { margin: 0 } }, h("h2", { class: "grow", style: { margin: 0 } }, `Сметы · ${plans.length}`),
+      h("button", { class: "btn sm primary", onclick: () => guard(async () => { const pl = await api("POST", "/api/plans", { patient_id: p.id }); close(); planEditor(pl.id); }) }, "+ Смета")),
+      plans.length ? h("div", { class: "panel list" }, plans.map(pl => h("button", { class: "row", onclick: () => { close(); planEditor(pl.id); } },
+        h("div", { class: "main" }, h("b", {}, `№${pl.id} · ${pl.title}`), h("span", {}, `${pl.created_at.slice(8, 10)}.${pl.created_at.slice(5, 7)} · этапов ${pl.stages.length}` + (pl.teeth.length ? ` · зубы ${pl.teeth.join(", ")}` : ""))),
+        h("span", { class: "num", style: { fontWeight: 600 } }, money(pl.total)), h("span", { class: "pill " + PLAN_PILL[pl.status] }, PLAN_ST[pl.status]))))
+        : h("div", { class: "muted", style: { fontSize: "14px" } }, "Смет пока нет. Нажмите «+ Смета», отметьте зубы и нажимайте на услуги."));
+  };
+  draw(); return box;
+}
+
+async function planEditor(planId) {
+  let pl = await api("GET", `/api/plans/${planId}`);
+  const sel = new Set(); let stage = Math.max(1, ...pl.items.map(i => i.stage || 1)); let q = "";
+  const saveNote = h("span", { class: "muted", style: { fontSize: "13px" } });
+  const err = h("div", { class: "err" });
+  const chartBox = h("div"), svcBox = h("div"), itemsBox = h("div"), totalBox = h("div"), stageBox = h("div", { class: "chips" });
+  let saveT;
+  const save = () => { saveNote.textContent = "Сохраняю…"; clearTimeout(saveT); saveT = setTimeout(() => guard(async () => {
+    const r = await api("PUT", `/api/plans/${pl.id}`, { title: pl.title, status: pl.status, discount_pct: +pl.discount_pct || 0, notes: pl.notes, doctor_id: pl.doctor_id,
+      items: pl.items.map(i => ({ stage: i.stage, service_id: i.service_id, name: i.name, teeth: i.teeth, qty: +i.qty, price: +i.price, discount_pct: +i.discount_pct || 0 })) });
+    pl = { ...pl, ...planCalc(r) }; saveNote.textContent = "Сохранено ✓"; drawTotal();
+  }, err), 500); };
+  const recalc = () => { pl = { ...pl, ...planCalc(pl) }; };
+  const change = () => { recalc(); drawChart(); drawItems(); drawTotal(); save(); };
+
+  function drawChart() {
+    chartBox.replaceChildren(
+      teethSVG(pl.items, { selected: sel, interactive: true, onToggle: t => { sel.has(t) ? sel.delete(t) : sel.add(t); drawChart(); drawSvc(); } }),
+      legendEl(pl.items),
+      h("div", { class: "bar", style: { margin: "6px 0 0", fontSize: "13px" } },
+        h("span", { class: "muted grow" }, sel.size ? `Выбрано: ${[...sel].sort().join(", ")} — теперь нажмите на услугу` : "1) Нажмите на зубы на схеме  2) Нажмите на услугу. Без зубов — сразу на услугу."),
+        sel.size ? h("button", { class: "btn sm ghost", onclick: () => { sel.clear(); drawChart(); drawSvc(); } }, "Снять выбор") : null));
+  }
+  function drawSvc() {
+    const list = REF.services.filter(s => !q || s.name.toLowerCase().includes(q.toLowerCase()));
+    const n = sel.size || 1;
+    svcBox.replaceChildren(
+      h("input", { class: "f", id: "svcSearch", type: "search", placeholder: "Найти услугу", value: q, style: { marginBottom: "8px" },
+        oninput: e => { q = e.target.value; drawSvc(); $("#svcSearch")?.focus(); } }),
+      h("div", { class: "svc-pick" }, list.map(s => h("button", { onclick: () => {
+        pl.items.push({ stage, service_id: s.id, name: s.name, teeth: [...sel].sort().join(","), qty: n, price: s.price, discount_pct: 0 });
+        change(); toast(`+ ${s.name}${sel.size ? " (" + [...sel].sort().join(", ") + ")" : ""}`);
+      } }, s.name, h("small", {}, n > 1 ? `${n} × ${money(s.price)}` : money(s.price))))));
+    if (q) { const el = $("#svcSearch"); if (el) { el.focus(); el.setSelectionRange(q.length, q.length); } }
+  }
+  function drawStages() {
+    const max = Math.max(stage, ...pl.items.map(i => i.stage || 1));
+    stageBox.replaceChildren(h("span", { class: "muted", style: { fontSize: "13px", alignSelf: "center" } }, "Добавлять в:"),
+      ...Array.from({ length: max }, (_, i) => h("button", { class: "chip", "aria-pressed": stage === i + 1 ? "true" : "false", onclick: () => { stage = i + 1; drawStages(); } }, `${i + 1} этап`)),
+      h("button", { class: "chip", onclick: () => { stage = max + 1; drawStages(); } }, "+ этап"));
+  }
+  function drawItems() {
+    if (!pl.items.length) { itemsBox.replaceChildren(h("div", { class: "empty panel" }, "Услуг пока нет")); return; }
+    const maxSt = Math.max(...pl.items.map(i => i.stage || 1));
+    itemsBox.replaceChildren(h("div", { class: "panel", style: { overflow: "hidden" } }, pl.stages.map(st => [
+      h("div", { class: "stage-hd" }, h("span", {}, `${st.stage} этап`), h("span", { class: "num" }, money(st.total))),
+      st.items.map(it => { const idx = pl.items.indexOf(it);
+        const upd = (k, v) => { pl.items[idx][k] = v; recalc(); drawTotal(); drawItemsSoft(); save(); };
+        return h("div", { class: "pitem" },
+          h("div", { class: "nm" }, numBadge(it), it.name, it.teeth_list.length ? h("div", { class: "tt", style: { color: TG.kinds[it.kind][1], marginLeft: "28px" } }, "зубы: " + it.teeth_list.join(", ")) : null),
+          h("div", { class: "sum", "data-sum": idx }, money(it.total)),
+          h("div", { class: "nums" },
+            h("label", {}, "кол-во ", h("input", { class: "n", type: "number", min: 1, value: it.qty, oninput: e => upd("qty", Math.max(1, +e.target.value || 1)) })),
+            h("label", {}, "цена ", h("input", { class: "pr", type: "number", min: 0, value: it.price, oninput: e => upd("price", +e.target.value || 0) })),
+            h("label", {}, "скидка % ", h("input", { class: "d", type: "number", min: 0, max: 100, value: it.discount_pct || 0, oninput: e => upd("discount_pct", Math.min(100, +e.target.value || 0)) })),
+            h("select", { "aria-label": "Этап", onchange: e => { pl.items[idx].stage = +e.target.value; change(); } },
+              Array.from({ length: maxSt + 1 }, (_, i) => h("option", { value: i + 1, selected: (it.stage || 1) === i + 1 }, `${i + 1} этап`))),
+            h("button", { class: "btn sm ghost danger", "aria-label": "Удалить", onclick: () => { pl.items.splice(idx, 1); change(); } }, "✕")));
+      })])));
+  }
+  function drawItemsSoft() { // обновить только суммы, не теряя фокус в поле
+    pl.items.forEach((it, i) => { const el = itemsBox.querySelector(`[data-sum="${i}"]`); if (el) el.textContent = money(planCalc({ items: [it] }).items[0].total); });
+    const hs = itemsBox.querySelectorAll(".stage-hd span.num"); pl.stages.forEach((st, i) => { if (hs[i]) hs[i].textContent = money(st.total); });
+  }
+  function drawTotal() {
+    totalBox.replaceChildren(h("div", { class: "panel total-box" },
+      pl.list_total !== pl.subtotal ? h("div", { class: "bar", style: { margin: 0 } }, h("span", { class: "grow muted" }, "По прайсу"), h("span", { class: "num" }, money(pl.list_total))) : null,
+      h("div", { class: "bar", style: { margin: 0 } }, h("label", { class: "grow muted", for: "planDisc" }, "Скидка на всю смету, %"),
+        h("input", { id: "planDisc", class: "f", type: "number", min: 0, max: 100, style: { width: "80px", minHeight: "34px" }, value: pl.discount_pct || 0,
+          oninput: e => { pl.discount_pct = Math.min(100, +e.target.value || 0); recalc(); drawTotal(); save(); $("#planDisc").focus(); } })),
+      h("div", { class: "bar", style: { margin: 0 } }, h("span", { class: "grow" }, h("b", {}, "Итого")), h("span", { class: "big num" }, money(pl.total)))));
+  }
+  const sendTo = to => guard(async () => { const r = await api("POST", `/api/plans/${pl.id}/send`, { to }); pl.status = r.status; statusSel.value = r.status;
+    toast(to === "patient" ? "PDF отправлен пациенту в Telegram" : "PDF отправлен вам в Telegram"); }, err);
+  const statusSel = h("select", { class: "f", id: "planStatus", style: { width: "auto" }, onchange: e => { pl.status = e.target.value; save(); } },
+    Object.entries(PLAN_ST).map(([k, v]) => h("option", { value: k, selected: pl.status === k }, v)));
+  const openPdf = () => {
+    if (DEMO) return previewDoc(pl);
+    const url = `/api/plans/${pl.id}/pdf?auth=${encodeURIComponent(AUTH)}`;
+    if (window.Telegram?.WebApp?.initData) return sendTo("staff");
+    window.open(url, "_blank") || (location.href = url);
+  };
+
+  drawChart(); drawSvc(); drawStages(); drawItems(); drawTotal();
+  const close = sheet(`Смета №${pl.id} · ${pl.patient_name}`, [
+    h("div", {}, h("h2", {}, "Зубы"), chartBox),
+    h("div", {}, h("h2", {}, "Услуги — нажмите, чтобы добавить"), stageBox, h("div", { style: { height: "8px" } }), svcBox),
+    h("div", {}, h("h2", {}, "Смета"), itemsBox),
+    totalBox,
+    h("div", { class: "fgrid" },
+      h("label", { class: "fl" }, "Врач", h("select", { class: "f", id: "planDoc", onchange: e => { pl.doctor_id = +e.target.value || null; save(); } },
+        h("option", { value: "" }, "—"), REF.doctors.map(d => h("option", { value: d.id, selected: d.id === pl.doctor_id }, d.name)))),
+      h("label", { class: "fl" }, "Статус", statusSel),
+      h("label", { class: "fl full" }, "Комментарий врача (попадёт в PDF)", h("textarea", { class: "f", id: "planNotes", oninput: e => { pl.notes = e.target.value; save(); } }, pl.notes || ""))),
+    err,
+    h("div", { class: "actions" },
+      h("button", { class: "btn primary", onclick: () => previewDoc(pl) }, "Предпросмотр"),
+      DEMO ? null : h("button", { class: "btn", onclick: openPdf }, window.Telegram?.WebApp?.initData ? "PDF мне в Telegram" : "Открыть PDF"),
+      h("button", { class: "btn", onclick: () => sendTo("patient") }, "Отправить пациенту"),
+      h("button", { class: "btn", onclick: () => { close(); apptSheet({ patient: { id: pl.patient_id, name: pl.patient_name } }); } }, "Записать на 1 этап"),
+      saveNote),
+    h("div", { class: "actions" }, h("button", { class: "btn ghost danger", onclick: e => {
+      if (e.target.dataset.sure) return guard(async () => { await api("DELETE", `/api/plans/${pl.id}`); close(); toast("Смета удалена"); });
+      e.target.dataset.sure = 1; e.target.textContent = "Точно удалить? Нажмите ещё раз"; } }, "Удалить смету"))]);
+}
+
+function previewDoc(pl) {
+  const created = pl.created_at.slice(0, 10).split("-").reverse().join(".");
+  const doc = REF.doctors.find(d => d.id === pl.doctor_id);
+  const nm = pl.patient_name.split(/\s+/), first = nm[1] || nm[0];
+  const disc = pl.items.some(i => i.discount_pct);
+  sheet("Предпросмотр сметы", [
+    h("div", { class: "muted", style: { fontSize: "13px" } }, DEMO ? "Так выглядит PDF, который получит пациент. В рабочей системе он открывается кнопкой «Открыть PDF» и уходит пациенту в Telegram."
+      : "Так выглядит PDF для пациента. Сам файл — кнопка «Открыть PDF» в смете."),
+    h("div", { class: "doc-preview" },
+      h("div", { class: "dp-head" }, h("b", {}, REF.clinic), h("span", {}, "AI Dentist")),
+      h("h3", { class: "dp-title" }, pl.title),
+      h("table", { class: "dp-meta" }, h("tr", {}, h("td", {}, "Пациент:"), h("td", {}, h("b", {}, pl.patient_name))),
+        h("tr", {}, h("td", {}, "Дата:"), h("td", {}, h("b", {}, created))), doc ? h("tr", {}, h("td", {}, "Врач:"), h("td", {}, h("b", {}, doc.name))) : null),
+      h("p", { class: "dp-greet" }, `${{ m: "Уважаемый", f: "Уважаемая" }[pl.patient_gender] || "Уважаемый(ая)"} ${first}!`, h("br"), "Представляем вам план лечения ваших зубов."),
+      teethSVG(pl.items), legendEl(pl.items),
+      h("div", { class: "dp-note" }, "Цифры на схеме — номера услуг в смете ниже. Нумерация зубов — международная (FDI)."),
+      pl.stages.map(st => [h("div", { class: "dp-stage" }, h("span", {}, pl.stages.length > 1 ? `${st.stage} этап` : "Услуги"), h("span", {}, money(st.total))),
+        h("table", {}, h("tr", {}, h("th", {}, "№"), h("th", {}, "Услуга"), h("th", { class: "r" }, "Цена"), h("th", { class: "r" }, "Кол-во"), disc ? h("th", { class: "r" }, "Скидка") : null, h("th", { class: "r" }, "Сумма")),
+          st.items.map(it => h("tr", {}, h("td", {}, numBadge(it)),
+            h("td", {}, it.name, it.teeth_list.length ? h("div", { style: { color: TG.kinds[it.kind][1], fontSize: "11.5px" } }, "зубы: " + it.teeth_list.join(", ")) : null),
+            h("td", { class: "r" }, money(it.price)), h("td", { class: "r" }, it.qty), disc ? h("td", { class: "r" }, it.discount_pct ? it.discount_pct + "%" : "—") : null,
+            h("td", { class: "r" }, h("b", {}, money(it.total))))))]),
+      h("div", { class: "dp-tot" },
+        pl.list_total !== pl.total ? [h("div", {}, `По прайсу: ${money(pl.list_total)}`), h("div", {}, `Скидка${pl.discount_pct ? " " + pl.discount_pct + "%" : ""}: − ${money(pl.list_total - pl.total)}`)] : null,
+        h("div", { class: "big" }, `ИТОГО: ${money(pl.total)}`)),
+      pl.notes ? h("p", { class: "dp-small" }, "Комментарий врача: " + pl.notes) : null,
+      h("p", { class: "dp-small" }, "После осмотра и беседы с врачом мне понятны план и объём лечения, его этапы, возможные осложнения, а также то, что план, сроки и стоимость могут измениться по ходу лечения. Я получил(а) ответы на все свои вопросы."),
+      h("p", { class: "dp-small" }, h("b", {}, "С планом лечения и условиями оплаты согласен(на).")),
+      h("div", { class: "dp-sign" }, h("span", {}, "Пациент: ______________ / ______________"), h("span", {}, "Дата: ________"),
+        h("span", {}, "Врач: ______________ / ______________")))]);
+}
+
+// ================= касса и отчёты =================
+let PERIOD = "today";
+function periodRange(k) {
+  const t = iso(new Date()), d = new Date();
+  if (k === "today") return [t, t, "Сегодня"];
+  if (k === "yday") { const y = addDays(t, -1); return [y, y, "Вчера"]; }
+  if (k === "week") return [addDays(t, -((d.getDay() + 6) % 7)), t, "Эта неделя"];
+  return [t.slice(0, 8) + "01", t, "Этот месяц"];
+}
+async function viewFinance() {
+  const [from, to] = periodRange(PERIOD);
+  const [r, debts] = await Promise.all([api("GET", `/api/report?date_from=${from}&date_to=${to}`), api("GET", "/api/debtors")]);
+  const docMax = Math.max(1, ...Object.values(r.by_doctor).map(x => x.sum));
+  const methMax = Math.max(1, ...Object.values(r.by_method));
+  const docColor = n => REF.doctors.find(d => d.name === n)?.color;
+  app().replaceChildren(
+    h("div", { class: "bar" }, h("h1", { class: "grow" }, "Касса и отчёты"),
+      h("div", { class: "chips" }, [["today", "Сегодня"], ["yday", "Вчера"], ["week", "Неделя"], ["month", "Месяц"]].map(([k, l]) =>
+        h("button", { class: "chip", "aria-pressed": PERIOD === k ? "true" : "false", onclick: () => { PERIOD = k; viewFinance(); } }, l)))),
+    h("div", { class: "kpis" },
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Получено денег"), h("div", { class: "v" }, money(r.paid))),
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Оказано услуг"), h("div", { class: "v" }, money(r.done_sum))),
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Приёмов / пришли"), h("div", { class: "v" }, `${r.appointments} / ${r.by_status.done}`)),
+      h("div", { class: "panel kpi" }, h("div", { class: "l" }, "Долг пациентов"), h("div", { class: "v", style: { color: r.total_debt > 0 ? "var(--bad)" : null } }, money(r.total_debt)))),
+    h("div", { class: "cols" },
+      h("div", { style: { display: "grid", gap: "16px", alignContent: "start" } },
+        h("div", { class: "panel pad" }, h("h2", {}, "Выручка по врачам"),
+          Object.keys(r.by_doctor).length ? Object.entries(r.by_doctor).map(([n, x]) => h("div", { class: "hbar" },
+            h("span", { style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, n),
+            h("div", { class: "track" }, h("div", { class: "fill", style: { width: x.sum / docMax * 100 + "%", "--c": docColor(n) } })),
+            h("span", { class: "num" }, `${money(x.sum)} · ${x.visits} пац.`))) : h("div", { class: "muted" }, "За период приёмов не было")),
+        h("div", { class: "panel pad" }, h("h2", {}, "Как платили"),
+          Object.keys(r.by_method).length ? Object.entries(r.by_method).map(([k, v]) => h("div", { class: "hbar" },
+            h("span", {}, REF.methods[k] || k), h("div", { class: "track" }, h("div", { class: "fill", style: { width: v / methMax * 100 + "%" } })), h("span", { class: "num" }, money(v))))
+            : h("div", { class: "muted" }, "Оплат за период нет")),
+        h("div", { class: "panel pad" }, h("h2", {}, "Приёмы"),
+          h("div", { class: "chips" }, Object.entries(r.by_status).map(([k, v]) => h("span", { class: `pill s-${k}` }, `${REF.statuses[k]}: ${v}`))),
+          h("p", { class: "muted", style: { margin: "10px 0 0", fontSize: "14px" } }, `Новых пациентов: ${r.new_patients} · записались сами через Telegram: ${r.from_bot}`))),
+      h("div", { class: "panel" }, h("div", { class: "pad", style: { paddingBottom: "4px" } }, h("h2", {}, `Должники · ${debts.length}`)),
+        debts.length ? h("div", { class: "list" }, debts.map(d => h("button", { class: "row", onclick: () => patientView(d.id) },
+          h("span", { class: "avatar" }, initials(d.name)), h("div", { class: "main" }, h("b", {}, d.name), h("span", { class: "mono" }, d.phone)),
+          h("span", { class: "pill debt num" }, money(d.debt))))) : h("div", { class: "empty" }, "Долгов нет"))));
+}
+
+// ================= настройки =================
+async function viewSettings() {
+  const edit = (title, fields, vals, save) => {
+    const v = { ...vals }; const err = h("div", { class: "err" });
+    const close = sheet(title, [h("div", { class: "fgrid" }, fields.map(([k, l, type]) => h("label", { class: "fl" + (type === "full" ? " full" : "") }, l,
+      type === "kind" ? h("select", { class: "f", id: "set_" + k, onchange: e => v[k] = e.target.value },
+        h("option", { value: "" }, "Авто — по названию"), Object.entries(TG.kinds).map(([kk, [label]]) => h("option", { value: kk, selected: v[k] === kk }, label)))
+      : h("input", { class: "f", id: "set_" + k, type: type === "color" ? "color" : type === "num" ? "number" : "text", value: v[k] ?? "", oninput: e => v[k] = e.target.value })))),
+      err, h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: () => guard(async () => { REF = { ...REF, ...(await save(v)) }; close(); toast("Сохранено"); viewSettings(); }, err) }, "Сохранить"))]);
+  };
+  const docFields = [["name", "ФИО", "full"], ["specialty", "Специальность"], ["color", "Цвет в расписании", "color"], ["tg_id", "Telegram ID врача (узнать: /id в боте)", "num"]];
+  const docSave = id => v => api(id ? "PUT" : "POST", id ? `/api/doctors/${id}` : "/api/doctors", { ...v, tg_id: v.tg_id ? +v.tg_id : null, active: 1 });
+  const svcFields = [["name", "Название", "full"], ["price", `Цена, ${REF.currency}`, "num"], ["duration_min", "Длительность, мин", "num"], ["kind", "Как рисовать на схеме зубов", "kind"]];
+  const svcSave = id => v => api(id ? "PUT" : "POST", id ? `/api/services/${id}` : "/api/services", { name: v.name, price: +v.price || 0, duration_min: +v.duration_min || 30, active: 1, kind: v.kind || "" });
+  app().replaceChildren(
+    h("div", { class: "bar" }, h("h1", {}, "Настройки")),
+    h("div", { class: "cols" },
+      h("div", { style: { display: "grid", gap: "16px", alignContent: "start" } },
+        h("div", { class: "panel" }, h("div", { class: "pad bar", style: { margin: 0, paddingBottom: "4px" } }, h("h2", { class: "grow", style: { margin: 0 } }, "Врачи"),
+          h("button", { class: "btn sm", onclick: () => edit("Новый врач", docFields, { color: "#16695a" }, docSave()) }, "+ Добавить")),
+          h("div", { class: "list" }, REF.doctors.map(d => h("button", { class: "row", onclick: () => edit(d.name, docFields, d, docSave(d.id)) },
+            h("span", { class: "dot", style: { background: d.color, width: "14px", height: "14px" } }),
+            h("div", { class: "main" }, h("b", {}, d.name), h("span", {}, d.specialty)),
+            h("span", { class: "pill " + (d.tg_id ? "s-confirmed" : "s-scheduled") }, d.tg_id ? "TG подключён" : "без TG"))))),
+        h("div", { class: "panel" }, h("div", { class: "pad bar", style: { margin: 0, paddingBottom: "4px" } }, h("h2", { class: "grow", style: { margin: 0 } }, "Услуги и цены"),
+          h("button", { class: "btn sm", onclick: () => edit("Новая услуга", svcFields, { duration_min: 30 }, svcSave()) }, "+ Добавить")),
+          h("div", { class: "list" }, REF.services.map(s => h("button", { class: "row", onclick: () => edit(s.name, svcFields, s, svcSave(s.id)) },
+            h("div", { class: "main" }, h("b", {}, s.name), h("span", {}, `${s.duration_min} мин`)), h("span", { class: "num" }, money(s.price))))))),
+      h("div", { style: { display: "grid", gap: "16px", alignContent: "start" } }, can("owner") ? await usersCard() : null, aiCard(), installCard(),
+      h("div", { class: "panel pad", style: { alignSelf: "start" } }, h("h2", {}, "Что делает Telegram-бот"),
+        h("div", { style: { display: "grid", gap: "8px", fontSize: "14px" } },
+          h("b", {}, "Пациентам"),
+          h("span", { class: "muted" }, "Только уведомления — в системе пациент ничего не делает. Нажимает /start, делится номером и получает: по желанию — советы по уходу за зубами утром и вечером, напоминание накануне приёма, смету в PDF, рекомендации после визита, приглашение на профосмотр через полгода, поздравление с днём рождения. Если пациент что-то напишет боту — сообщение придёт администратору."),
+          h("b", {}, "Администраторам"),
+          h("span", { class: "muted" }, "Кнопка «🤖 Помощник» или просто текст боту: «запиши Иванова к Шахруху на завтра в 15:00», «сколько заработали за неделю». Расписание на сегодня и завтра, отметки «пришёл / не пришёл», приём оплаты, поиск пациента, запись пациента, долги, отчёт за день/неделю/месяц. Сообщения о новых записях и отменах. Утром — список приёмов, вечером — итоги дня. Список тех, кому надо позвонить, если у пациента нет Telegram."),
+          h("b", {}, "Врачам"),
+          h("span", { class: "muted" }, "Свои приёмы на сегодня утром и сообщения о новых пациентах — если указать Telegram ID врача здесь."),
+          h("span", { class: "muted" }, `Рабочее время: ${REF.work_start}–${REF.work_end}, шаг записи ${REF.slot} мин. Меняется в файле настроек .env на сервере.`))))));
+}
+
+function aiCard() {
+  const on = !!REF.ai;
+  return h("div", { class: "panel pad" }, h("div", { class: "bar", style: { margin: "0 0 8px" } }, h("h2", { class: "grow", style: { margin: 0 } }, "✨ ИИ-помощник"),
+      h("span", { class: "pill " + (on ? "s-confirmed" : "s-scheduled") }, DEMO ? "демо" : on ? "подключён" : "не подключён")),
+    h("div", { style: { display: "grid", gap: "8px", fontSize: "14px" } },
+      h("span", { class: "muted" }, "Записывает и переносит пациентов, отвечает на вопросы по расписанию, деньгам и долгам, составляет сметы, оформляет протокол приёма из пары слов, пишет рекомендации. Работает в панели (кнопка ✨ внизу) и в боте для сотрудников."),
+      on ? (DEMO ? h("span", { class: "muted" }, "В демо отвечает по шаблонам. На сервере — настоящая модель.") : null)
+        : h("span", {}, "Чтобы включить, впишите ключ в файл ", h("code", {}, ".env"), " на сервере и перезапустите: ",
+          h("br"), "• Claude: ", h("code", {}, "AI_API_KEY=sk-ant-…"), " (console.anthropic.com)",
+          h("br"), "• Бесплатно — Gemini: ", h("code", {}, "AI_PROVIDER=openai"), ", ", h("code", {}, "AI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai"), ", ключ с aistudio.google.com"),
+      h("span", { class: "muted", style: { fontSize: "13px" } }, "Перед записью в базу ИИ работает только с данными вашей клиники. Проверяйте протоколы перед сохранением — ответственность за медицинские записи остаётся за врачом.")));
+}
+
+async function usersCard() {
+  const users = await api("GET", "/api/users");
+  const form = (u = {}) => {
+    const v = { login: u.login || "", name: u.name || "", role: u.role || "admin", doctor_id: u.doctor_id || null, password: "", active: u.active ?? 1 };
+    const err = h("div", { class: "err" });
+    const docSel = h("label", { class: "fl" }, "Врач в расписании", h("select", { class: "f", id: "u_doc", onchange: e => v.doctor_id = +e.target.value || null },
+      h("option", { value: "" }, "—"), REF.doctors.map(d => h("option", { value: d.id, selected: v.doctor_id === d.id }, d.name))));
+    docSel.hidden = v.role !== "doctor";
+    const close = sheet(u.id ? u.name || u.login : "Новый сотрудник", [h("div", { class: "fgrid" },
+      h("label", { class: "fl" }, "Логин", h("input", { class: "f", id: "u_login", value: v.login, autocapitalize: "none", oninput: e => v.login = e.target.value.trim() })),
+      h("label", { class: "fl" }, "Имя", h("input", { class: "f", id: "u_name", value: v.name, oninput: e => v.name = e.target.value })),
+      h("label", { class: "fl" }, "Роль", h("select", { class: "f", id: "u_role", onchange: e => { v.role = e.target.value; docSel.hidden = v.role !== "doctor"; } },
+        Object.entries(REF.roles || {}).filter(([k]) => k !== "owner").map(([k, l]) => h("option", { value: k, selected: v.role === k }, l)))),
+      docSel,
+      h("label", { class: "fl" }, u.id ? "Новый пароль (пусто — не менять)" : "Пароль", h("input", { class: "f", id: "u_pw", type: "text", oninput: e => v.password = e.target.value })),
+      u.id ? h("label", { class: "fl" }, "Доступ", h("select", { class: "f", id: "u_active", onchange: e => v.active = +e.target.value },
+        h("option", { value: 1, selected: v.active == 1 }, "Активен"), h("option", { value: 0, selected: v.active == 0 }, "Отключён"))) : null),
+      h("div", { class: "muted", style: { fontSize: "13px" } }, "Врач видит своё расписание, пациентов, протоколы и сметы. Касса и отчёты — только у администраторов."),
+      err, h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: () => guard(async () => {
+        await api(u.id ? "PUT" : "POST", u.id ? `/api/users/${u.id}` : "/api/users", { ...v, doctor_id: v.role === "doctor" ? v.doctor_id : null }); close(); toast("Сохранено"); viewSettings(); }, err) }, "Сохранить"))]);
+  };
+  return h("div", { class: "panel" }, h("div", { class: "pad bar", style: { margin: 0, paddingBottom: "4px" } }, h("h2", { class: "grow", style: { margin: 0 } }, "Сотрудники и входы"),
+      h("button", { class: "btn sm", onclick: () => form() }, "+ Добавить")),
+    h("div", { class: "list" },
+      h("div", { class: "row", style: { cursor: "default" } }, h("div", { class: "main" }, h("b", {}, "Администратор"), h("span", {}, "логин admin · главный, пароль из настроек сервера")), h("span", { class: "pill s-confirmed" }, "Главный")),
+      users.map(u => h("button", { class: "row", onclick: () => form(u) },
+        h("div", { class: "main" }, h("b", {}, u.name || u.login), h("span", {}, `логин: ${u.login}${u.doctor_name ? " · " + u.doctor_name : ""}`)),
+        h("span", { class: "pill " + (u.active ? "s-scheduled" : "s-cancelled") }, u.active ? (REF.roles?.[u.role] || u.role) : "отключён")))));
+}
+
+// ---------- установка как приложения ----------
+let INSTALL = null;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); INSTALL = e; if (TAB === "set") viewSettings(); });
+const IS_APP = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+function installCard() {
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  return h("div", { class: "panel pad", style: { alignSelf: "start" } }, h("h2", {}, "Приложение на телефон"),
+    IS_APP ? h("p", { style: { margin: 0, fontSize: "14px" } }, "✅ AI Dentist уже установлен как приложение на этом устройстве.")
+    : h("div", { style: { display: "grid", gap: "8px", fontSize: "14px" } },
+      h("span", { class: "muted" }, "Поставьте AI Dentist на главный экран: откроется как обычное приложение, на весь экран, со своей иконкой."),
+      INSTALL ? h("button", { class: "btn primary", onclick: async () => { INSTALL.prompt(); await INSTALL.userChoice; INSTALL = null; viewSettings(); } }, "Установить приложение") : null,
+      h("span", {}, h("b", {}, "iPhone: "), "откройте панель в Safari → кнопка «Поделиться» → «На экран „Домой“»."),
+      h("span", {}, h("b", {}, "Android: "), "в Chrome меню ⋮ → «Установить приложение» (или «Добавить на главный экран»)."),
+      h("span", {}, h("b", {}, "Компьютер: "), "в Chrome значок установки справа в адресной строке."),
+      DEMO ? h("span", { class: "muted" }, "В демо установка недоступна — она работает на вашем сервере по адресу https://…") : null));
+}
+
+
+// ================= протокол приёма =================
+const NOTE_TPL = [
+  { key: "caries", title: "Кариес / пломба", kinds: ["filling"],
+    complaints: "Кратковременная боль от холодного и сладкого в области зуба {t}.",
+    diagnosis: "K02.1 Кариес дентина зуба {t}",
+    treatment: "Инфильтрационная анестезия. Препарирование кариозной полости, медикаментозная обработка, изоляция. Адгезивный протокол, восстановление светоотверждаемым композитным материалом. Шлифовка, полировка, контроль окклюзии.",
+    recommendations: "Не есть 2 часа после визита.\nПервые сутки возможна лёгкая чувствительность — это нормально.\nЧистить зубы 2 раза в день, пользоваться зубной нитью.\nПрофосмотр через 6 месяцев." },
+  { key: "endo", title: "Каналы / пульпит", kinds: ["canal"],
+    complaints: "Самопроизвольная ночная боль в области зуба {t}, боль от горячего.",
+    diagnosis: "K04.0 Пульпит зуба {t}",
+    treatment: "Анестезия. Изоляция. Раскрытие полости зуба, экстирпация пульпы. Определение рабочей длины апекслокатором, механическая и медикаментозная обработка каналов, обтурация. Временная/постоянная реставрация. Контрольный снимок.",
+    recommendations: "Не есть 2 часа, не жевать на этой стороне до постоянной пломбы/коронки.\nНесколько дней возможна боль при накусывании — при необходимости обезболивающее.\nЕсли боль усиливается или появился отёк — позвоните в клинику.\nЗуб после лечения каналов желательно защитить коронкой." },
+  { key: "extract", title: "Удаление", kinds: ["extract"],
+    complaints: "Боль и разрушение зуба {t}.",
+    diagnosis: "K04.5 Хронический апикальный периодонтит зуба {t}",
+    treatment: "Аппликационная и инфильтрационная анестезия. Удаление зуба {t}, ревизия и кюретаж лунки, гемостаз, наложение марлевого тампона.",
+    recommendations: "Тампон держать 20–30 минут.\nНе есть 2 часа, не полоскать рот 24 часа.\nХолод к щеке по 15 минут с перерывами в первые 2–3 часа.\nНе греть щеку, не курить, не ходить в баню 3 дня.\nПри кровотечении, сильной боли или температуре выше 38 °C — сразу звоните в клинику." },
+  { key: "hygiene", title: "Профгигиена", kinds: ["general"],
+    complaints: "Жалоб нет, профилактический осмотр. Налёт, кровоточивость дёсен при чистке.",
+    diagnosis: "K03.6 Отложения на зубах",
+    treatment: "Удаление над- и поддесневых зубных отложений ультразвуком, обработка Air Flow, полировка пастами, покрытие фторсодержащим препаратом.",
+    recommendations: "Не есть и не пить красящие продукты 2 часа.\nЧистить зубы 2 раза в день по 2 минуты, мягкая щётка.\nЗубная нить или ирригатор ежедневно.\nСледующая чистка через 6 месяцев." },
+  { key: "implant", title: "Имплантация", kinds: ["implant", "former"],
+    complaints: "Отсутствие зуба {t}, затруднённое жевание.",
+    diagnosis: "K08.1 Потеря зуба {t} вследствие удаления",
+    treatment: "Анестезия. Разрез, отслаивание слизисто-надкостничного лоскута, формирование ложа, установка имплантата в позицию {t}, установка заглушки/формирователя, ушивание. Контрольный снимок.",
+    recommendations: "Холод к щеке первые сутки.\nМягкая, не горячая пища 3–5 дней, не жевать на этой стороне.\nНе курить, не полоскать активно, не ходить в баню 1 неделю.\nПринимать назначенные препараты.\nСнятие швов через 7–10 дней." },
+  { key: "consult", title: "Консультация", kinds: ["other", "crown"],
+    complaints: "",
+    diagnosis: "",
+    treatment: "Осмотр полости рта, зубная формула. Составлен и разъяснён план лечения.",
+    recommendations: "План лечения отправлен вам в Telegram. Вопросы — по телефону клиники." },
+];
+
+async function noteEditor({ appointment, patient, note }) {
+  const a = appointment || null;
+  const pid = a ? a.patient_id : note ? note.patient_id : patient.id;
+  const pname = a ? a.patient_name : patient ? patient.name : "";
+  let n = note || (a ? await api("GET", `/api/appointments/${a.id}/note`) : null) || {};
+  if (!n.id) n = {};
+  const f = { complaints: n.complaints || "", diagnosis: n.diagnosis || "", treatment: n.treatment || "", recommendations: n.recommendations || "", teeth: n.teeth || "" };
+  const err = h("div", { class: "err" }), box = {};
+  const field = (k, label, rows = 3) => { box[k] = h("textarea", { class: "f", id: "nf_" + k, rows, oninput: e => f[k] = e.target.value }, f[k]); return h("label", { class: "fl" }, label, box[k]); };
+  const teethIn = h("input", { class: "f", id: "nf_teeth", value: f.teeth, placeholder: "например 36 37", oninput: e => f.teeth = e.target.value });
+  const fill = v => { for (const k of Object.keys(f)) if (v[k] != null && v[k] !== "") { f[k] = v[k]; if (box[k]) box[k].value = v[k]; } if (v.teeth) teethIn.value = v.teeth; };
+  const applyTpl = t => fill({ complaints: t.complaints.replaceAll("{t}", f.teeth || "—"), diagnosis: t.diagnosis.replaceAll("{t}", f.teeth || "—"),
+    treatment: t.treatment.replaceAll("{t}", f.teeth || "—"), recommendations: t.recommendations });
+  const shorthand = h("textarea", { class: "f", id: "nf_short", rows: 2, placeholder: "Кратко своими словами: «36 глубокий кариес, анестезия, пломба Estelite, чувствительность после»" });
+  const aiBtn = h("button", { class: "btn", type: "button", onclick: () => guard(async () => {
+    if (!shorthand.value.trim()) throw new Error("Напишите пару слов о приёме");
+    aiBtn.disabled = true; aiBtn.textContent = "ИИ пишет…";
+    try { fill(await api("POST", "/api/ai/note", { text: shorthand.value, patient_id: pid, service: a?.service_name || "" })); toast("Протокол заполнен — проверьте и сохраните"); }
+    finally { aiBtn.disabled = false; aiBtn.textContent = "✨ Оформить с ИИ"; }
+  }, err) }, "✨ Оформить с ИИ");
+  const save = async () => {
+    const body = { ...f, patient_id: pid, appointment_id: a?.id || n.appointment_id || null };
+    n = n.id ? await api("PUT", `/api/notes/${n.id}`, body) : await api("POST", "/api/notes", body);
+    return n;
+  };
+  const kind = a ? detectKind(a.service_name || "") : null;
+  const tplSorted = [...NOTE_TPL].sort((x, y) => (y.kinds.includes(kind) ? 1 : 0) - (x.kinds.includes(kind) ? 1 : 0));
+  const close = sheet(`Протокол · ${pname}`, [
+    a ? h("div", { class: "muted", style: { fontSize: "14px" } }, `${ruDay(a.start.slice(0, 10))}, ${a.start.slice(11)} · ${a.doctor_name} · ${a.service_name || "приём"}`) : null,
+    h("div", {}, h("h2", {}, "Шаблон"), h("div", { class: "tpl" }, tplSorted.map(t => h("button", { class: "chip", type: "button", onclick: () => applyTpl(t) }, t.title)))),
+    REF.ai ? h("div", { class: "panel pad", style: { display: "grid", gap: "8px" } },
+      h("span", { class: "ai-badge" }, "✨ ИИ-помощник" + (DEMO ? " · демо" : "")), shorthand, h("div", { class: "actions" }, aiBtn)) : null,
+    h("label", { class: "fl" }, "Зубы", teethIn),
+    field("complaints", "Жалобы", 2), field("diagnosis", "Диагноз", 2), field("treatment", "Проведено", 4), field("recommendations", "Рекомендации пациенту", 4),
+    err,
+    h("div", { class: "actions" },
+      h("button", { class: "btn primary", onclick: () => guard(async () => { await save(); close(); toast("Протокол сохранён"); if (TAB === "sched") viewSched(); }, err) }, "Сохранить"),
+      h("button", { class: "btn", onclick: () => guard(async () => { await save(); await api("POST", `/api/notes/${n.id}/send`); toast("Рекомендации отправлены пациенту"); close(); }, err) }, "Сохранить и отправить рекомендации"))]);
+}
+
+function notesBlock(p, close) {
+  const list = p.visit_notes || [];
+  return h("div", {}, h("div", { class: "bar", style: { margin: "0 0 8px" } }, h("h2", { class: "grow", style: { margin: 0 } }, `Протоколы приёма · ${list.length}`),
+      h("button", { class: "btn sm", onclick: () => { close(); noteEditor({ patient: p }); } }, "+ Протокол")),
+    list.length ? h("div", { class: "panel" }, list.map(n => h("button", { class: "note-card", onclick: () => { close(); noteEditor({ patient: p, note: n }); } },
+      h("b", {}, (n.diagnosis || n.treatment || "Протокол").split("\n")[0].slice(0, 90)),
+      h("span", {}, `${(n.appt_start || n.created_at).slice(0, 10).split("-").reverse().join(".")}${n.doctor_name ? " · " + n.doctor_name : ""}${n.teeth ? " · зубы " + n.teeth : ""}${n.sent_at ? " · рекомендации отправлены" : ""}`))))
+      : h("div", { class: "muted", style: { fontSize: "14px" } }, "Протоколов пока нет. Шаблоны и ИИ заполняют их за минуту."));
+}
+
+function fileUrl(fl) { return DEMO ? fl.data : `/api/files/${fl.id}?auth=${encodeURIComponent(AUTH)}`; }
+function filesBlock(p) {
+  const wrap = h("div");
+  const draw = files => {
+    const input = h("input", { type: "file", id: "fileUp", accept: "image/*,application/pdf", multiple: true, hidden: true, onchange: e => guard(async () => {
+      let last = files;
+      for (const file of e.target.files) {
+        if (file.size > 20 * 1024 * 1024) throw new Error(`${file.name}: больше 20 МБ`);
+        const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+        last = await api("POST", `/api/patients/${p.id}/files`, { name: file.name, mime: file.type, data });
+      }
+      draw(last); toast("Загружено");
+    }) });
+    wrap.replaceChildren(h("div", { class: "bar", style: { margin: "0 0 8px" } }, h("h2", { class: "grow", style: { margin: 0 } }, `Снимки и файлы · ${files.length}`),
+        h("label", { class: "btn sm", for: "fileUp" }, "+ Загрузить"), input),
+      files.length ? h("div", { class: "files" }, files.map(fl => h("a", { class: "file", href: fileUrl(fl), target: "_blank", rel: "noopener" },
+        (fl.mime || "").startsWith("image/") ? h("img", { src: fileUrl(fl), alt: fl.name, loading: "lazy" }) : h("div", { class: "ico" }, "📄"),
+        h("span", {}, fl.name),
+        h("button", { class: "del", "aria-label": "Удалить файл", onclick: e => { e.preventDefault(); e.stopPropagation();
+          if (e.target.dataset.sure) return guard(async () => draw(await api("DELETE", `/api/files/${fl.id}`)));
+          e.target.dataset.sure = 1; e.target.textContent = "точно?"; } }, "✕"))))
+      : h("div", { class: "muted", style: { fontSize: "14px" } }, "Рентгеновские снимки, фото, сканы согласий. Можно сфотографировать прямо с телефона."));
+  };
+  draw(p.files || []);
+  return wrap;
+}
+
+function messageDialog(p) {
+  const err = h("div", { class: "err" });
+  const t = h("textarea", { class: "f", id: "msgText", rows: 4, placeholder: "Например: Ваша коронка готова, ждём вас в четверг в 15:00" });
+  const close = sheet(`Сообщение · ${p.name}`, [h("div", { class: "muted", style: { fontSize: "14px" } }, "Придёт пациенту в Telegram как уведомление от клиники. Ответить в боте пациент не сможет — только позвонить."),
+    t, err, h("div", { class: "actions" }, h("button", { class: "btn primary", onclick: () => guard(async () => { await api("POST", `/api/patients/${p.id}/message`, { text: t.value }); close(); toast("Отправлено"); }, err) }, "Отправить"))]);
+  setTimeout(() => t.focus(), 50);
+}
+
+// ================= ИИ-помощник =================
+let AI_MSGS = [];
+function openAI(ctx = {}) {
+  const log = h("div", { class: "chat", id: "aiLog" });
+  const err = h("div", { class: "err" });
+  const input = h("textarea", { class: "f", id: "aiInput", rows: 1, placeholder: "Задача или вопрос…", onkeydown: e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } } });
+  const SUGG = ctx.patient_id
+    ? [`Кратко о пациенте ${ctx.patient_name}: что лечили и что осталось`, "Объясни его план лечения простыми словами для пациента", "Есть ли у него долг?"]
+    : ME().role === "doctor" ? ["Кто у меня сегодня?", "Кто у меня завтра?", "Напиши рекомендации после удаления зуба"]
+    : ["Кто записан завтра?", "Выручка за неделю", "Кто должен больше всех?", "Свободное время у Ибрагимова на завтра"];
+  const draw = (pending) => {
+    log.replaceChildren(...[
+      ...(AI_MSGS.length ? [] : [h("div", { class: "msg sys" }, "Пишите обычными словами: записать, перенести, составить смету, посчитать выручку, найти пациента, написать текст." + (DEMO ? "\nДемо: отвечает по примерным данным." : ""))]),
+      ...AI_MSGS.map(m => h("div", { class: "msg " + (m.role === "user" ? "u" : "a") },
+        m.role === "user" ? m.content : String(m.content).replace(/\*\*(.+?)\*\*/g, "$1").replace(/^#{1,6}\s*/gm, "").replace(/^\s*[-*]\s+/gm, "• "),
+        m.actions?.length ? h("span", { class: "act" }, "✓ Выполнено действий: " + m.actions.length) : null,
+        ...[...new Set((m.actions || []).filter(x => ["create_plan", "show_plan_pdf"].includes(x.tool))
+          .map(x => (x.result || {}).plan_id || (x.args || {}).plan_id).filter(Boolean))]
+          .map(id => h("a", { class: "btn sm", style: { marginTop: "8px", display: "inline-flex" }, target: "_blank",
+            href: `/api/plans/${id}/pdf?auth=${encodeURIComponent(AUTH)}` }, `📄 PDF сметы №${id}`)))),
+      pending ? h("div", { class: "msg a" }, h("span", { class: "typing" }, h("i"), h("i"), h("i"))) : null,
+      !AI_MSGS.length ? h("div", { class: "chips" }, SUGG.map(q => h("button", { class: "chip", onclick: () => { input.value = q; send(); } }, q))) : null].filter(Boolean));
+    const sc = log.closest(".sheet"); if (sc) sc.scrollTop = sc.scrollHeight;
+  };
+  async function send() {
+    const q = input.value.trim(); if (!q) return;
+    input.value = ""; err.textContent = "";
+    AI_MSGS.push({ role: "user", content: q }); draw(true);
+    try {
+      const r = await api("POST", "/api/ai", { messages: AI_MSGS.map(({ role, content }) => ({ role, content })), context: { ...ctx, day: DAY } });
+      AI_MSGS.push({ role: "assistant", content: r.reply, actions: r.actions });
+      if (r.actions?.length && TAB === "sched") viewSched();
+    } catch (e) { err.textContent = e.message; AI_MSGS.pop(); input.value = q; }
+    draw(false);
+  }
+  sheet("✨ ИИ-помощник", [log, err, h("div", { class: "chat-in" }, input, h("button", { class: "btn primary", onclick: send }, "→"),
+    AI_MSGS.length ? h("button", { class: "btn ghost", title: "Новый разговор", onclick: () => { AI_MSGS = []; draw(); } }, "↺") : null)]);
+  draw(); setTimeout(() => input.focus(), 60);
+}
+function renderFab() {
+  let f = $("#aiFab");
+  if (!REF.ai) { f?.remove(); return; }
+  if (!f) { f = h("button", { class: "fab", id: "aiFab", "aria-label": "ИИ-помощник", onclick: () => openAI() },
+    h("span", { html: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8zM19 14l.9 2.6 2.6.9-2.6.9L19 21l-.9-2.6-2.6-.9 2.6-.9zM5 15l.7 1.8 1.8.7-1.8.7L5 20l-.7-1.8L2.5 17.5l1.8-.7z"/></svg>' }),
+    h("span", { class: "lb" }, "ИИ-помощник")); document.body.append(f); }
+}
+
+const VIEWS = { sched: viewSched, pat: viewPatients, fin: viewFinance, set: viewSettings };
+
+// ================= вход =================
+function showLogin() {
+  $("#tabs").hidden = true;
+  const err = h("div", { class: "err" });
+  const USER_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.6 4-5.5 7.5-5.5s6.3 1.9 7.5 5.5"/></svg>';
+  let opts = [], chosen = null, active = -1;
+  const pw = h("input", { class: "f", type: "password", id: "pw", placeholder: "Пароль", autocomplete: "current-password" });
+  const list = h("ul", { class: "cb-list", id: "lgList", role: "listbox", hidden: true });
+  const lg = h("input", { class: "f cb-input", id: "lg", placeholder: "Логин или имя", autocomplete: "username", autocapitalize: "none",
+    role: "combobox", "aria-expanded": "false", "aria-controls": "lgList", "aria-autocomplete": "list",
+    oninput: () => { chosen = null; open(true); },
+    onkeydown: e => {
+      const items = [...list.querySelectorAll("li")];
+      if (e.key === "ArrowDown") { e.preventDefault(); if (list.hidden) open(false); active = Math.min(active + 1, items.length - 1); mark(items); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); active = Math.max(active - 1, 0); mark(items); }
+      else if (e.key === "Enter" && !list.hidden && items[active]) { e.preventDefault(); items[active].click(); }
+      else if (e.key === "Escape") close(); } });
+  const toggle = h("button", { type: "button", class: "cb-toggle", "aria-label": "Показать список", tabindex: -1,
+    onmousedown: e => e.preventDefault(), onclick: () => { list.hidden ? open(false) : close(); lg.focus(); } },
+    h("span", { html: '<svg viewBox="0 0 12 8" width="12" height="8"><path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>' }));
+  const mark = items => items.forEach((li, k) => li.setAttribute("aria-selected", k === active ? "true" : "false"));
+  function open(filter) {
+    const q = filter ? lg.value.trim().toLowerCase() : "";
+    const shown = opts.filter(o => !q || o.name.toLowerCase().includes(q) || o.login.toLowerCase().includes(q));
+    active = -1;
+    list.replaceChildren(...shown.map(o => h("li", { role: "option", "aria-selected": "false",
+      onmousedown: e => e.preventDefault(),
+      onclick: () => { chosen = o; lg.value = o.name; close(); pw.focus(); } },
+      h("span", { class: "cb-ico", html: USER_SVG }),
+      h("span", { class: "cb-txt" }, h("b", {}, o.name), o.role !== "owner" && o.name !== REF_ROLES[o.role] ? h("small", {}, REF_ROLES[o.role] || o.role) : null),
+      chosen === o ? h("span", { class: "cb-check" }, "✓") : null)));
+    list.hidden = !shown.length; lg.setAttribute("aria-expanded", list.hidden ? "false" : "true");
+  }
+  function close() { list.hidden = true; lg.setAttribute("aria-expanded", "false"); }
+  lg.addEventListener("blur", () => setTimeout(close, 120));
+  const loginValue = () => {
+    if (chosen) return chosen.login;
+    const v = lg.value.trim(), m = opts.find(o => o.name.toLowerCase() === v.toLowerCase());
+    return m ? m.login : v;
+  };
+  app().replaceChildren(h("form", { class: "panel login", onsubmit: e => { e.preventDefault(); guard(async () => {
+      const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login: loginValue(), password: pw.value }) });
+      if (!r.ok) throw new Error("Неверный логин или пароль");
+      AUTH = "Bearer " + (await r.json()).token; try { sessionStorage.setItem("tok", AUTH); } catch (e) {} start();
+    }, err); } },
+    h("h1", {}, "Вход в AI Dentist"),
+    h("div", { class: "fl" }, h("label", { for: "lg" }, "Пользователь"), h("div", { class: "cb" }, lg, toggle, list)),
+    h("label", { class: "fl" }, "Пароль", pw), err, h("button", { class: "btn primary", type: "submit" }, "Войти")));
+  lg.focus();
+  fetch("/api/login-options").then(r => r.ok ? r.json() : []).then(l => { opts = l || []; }).catch(() => {});
+}
+const REF_ROLES = { owner: "Главный администратор", admin: "Администратор", doctor: "Врач" };
+
+function demoEntry() {
+  $("#demo").hidden = false; $("#tabs").hidden = true;
+  $("#demoBuy").href = DEMO_CONTACT;
+  $("#demoRole").onclick = e => { e.preventDefault(); demoEntry(); };
+  $("#clinicName").textContent = "Демо-клиника";
+  const roles = [
+    ["owner", "👑", "Руководитель клиники", "Всё: расписание, пациенты, сметы, касса и отчёты, настройки, ИИ-помощник", { name: "Главный администратор", doctor_id: null }],
+    ["admin", "🗂", "Администратор", "Запись пациентов, сметы, оплаты, напоминания в Telegram", { name: "Айгуль (администратор)", doctor_id: null }],
+    ["doctor", "🩺", "Врач", "«Мой день», карты пациентов, протоколы приёма с ИИ, сметы", { name: "Ибрагимов Шахрух", doctor_id: 1 }]];
+  app().replaceChildren(h("div", { class: "demo-entry" },
+    h("span", { class: "ai-badge" }, "AI Dentist · демо"),
+    h("h1", {}, "Попробуйте систему сами"),
+    h("p", {}, "Это рабочая копия AI Dentist с вымышленными пациентами. Записывайте, составляйте сметы, принимайте оплаты, спрашивайте ИИ-помощника — ничего не сломаете. Выберите, кем войти:"),
+    ...roles.map(([role, ic, title, desc, extra]) => h("button", { class: "role-card", onclick: () => {
+      DEMO_ME = { uid: 0, role, ...extra }; DOCF.clear(); TAB = "sched"; if (typeof AI_MSGS !== "undefined") AI_MSGS.length = 0; guard(start); } },
+      h("span", { class: "ic" }, ic), h("span", {}, h("b", {}, title), h("small", {}, desc)))),
+    h("div", { class: "cta-row" },
+      h("a", { class: "btn primary", href: DEMO_CONTACT, target: "_blank", rel: "noopener" }, "Подключить мою клинику"),
+      h("a", { class: "btn", href: "https://instagram.com/ai_dentale", target: "_blank", rel: "noopener" }, "Instagram"))));
+}
+
+async function start() {
+  REF = await api("GET", "/api/ref");
+  $("#clinicName").textContent = REF.clinic;
+  document.title = "AI Dentist · " + REF.clinic;
+  try { const t = localStorage.getItem("tab"); if (VIEWS[t]) TAB = t; } catch (e) {}
+  if (!tabsFor().some(([id]) => id === TAB)) TAB = "sched";
+  if (ME().role === "doctor" && ME().doctor_id && !DOCF.size) DOCF.add(ME().doctor_id);
+  $("#clinicName").textContent = REF.clinic + (ME().role !== "owner" ? " · " + ME().name : "");
+  renderTabs(); renderFab(); VIEWS[TAB]();
+}
+
+(async function boot() {
+  let server = false;
+  try { const r = await fetch("/api/ping"); server = r.ok && (await r.json()).app === "dentcrm"; } catch (e) {}
+  if (!server) { DEMO = true; return demoEntry(); }
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js").catch(() => {});
+  // внутри Telegram — входим по подписи Telegram, без пароля
+  await new Promise(res => { const s = document.createElement("script"); s.src = "https://telegram.org/js/telegram-web-app.js"; s.onload = s.onerror = res; document.head.append(s); });
+  const tg = window.Telegram?.WebApp;
+  if (tg?.initData) {
+    tg.ready(); tg.expand(); AUTH = "tma " + tg.initData;
+    if (tg.colorScheme) document.documentElement.dataset.theme = tg.colorScheme;
+    // цвета темы Telegram → наши токены (сгруппированный фон, поверхности, акцент)
+    const tp = tg.themeParams || {}, R = document.documentElement.style;
+    const map = { "--bg": tp.secondary_bg_color, "--surface": tp.bg_color || tp.section_bg_color, "--ink": tp.text_color,
+      "--muted": tp.hint_color, "--accent": tp.button_color, "--accent-ink": tp.button_text_color };
+    for (const [k, v] of Object.entries(map)) if (v) R.setProperty(k, v);
+    if (tp.button_color) R.setProperty("--accent-soft", tp.button_color + "22");
+    try { tg.setHeaderColor && tg.setHeaderColor("secondary_bg_color"); tg.setBackgroundColor && tg.setBackgroundColor("secondary_bg_color"); } catch (e) {}
+    return guard(start);
+  }
+  try { AUTH = sessionStorage.getItem("tok") || ""; } catch (e) {}
+  if (AUTH) guard(start); else showLogin();
+})();
+</script>

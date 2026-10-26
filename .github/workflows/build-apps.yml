@@ -28,7 +28,7 @@ jobs:
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          if [ -z "$KS" ]; then echo "::error::Нет секрета ANDROID_KEYSTORE_BASE64" | tee build.log; exit 1; fi
+          if [ -z "$KS" ]; then echo "::warning::Нет секрета ANDROID_KEYSTORE_BASE64 — проверочная сборка без подписи"; exit 0; fi
           echo "$KS" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
       - name: Сборка APK и AAB
@@ -39,6 +39,7 @@ jobs:
         run: gradle --no-daemon --stacktrace assembleRelease bundleRelease 2>&1 | tee ../build.log
       - name: Файлы
         run: |
+          if [ -z "${KEYSTORE_PATH:-}" ]; then echo "Код собрался, но APK без подписи не выпускаем: добавьте секреты ANDROID_KEYSTORE_*" | tee -a build.log; exit 1; fi
           mkdir out
           cp android/app/build/outputs/apk/release/app-release.apk out/AI-Dentist.apk
           cp android/app/build/outputs/bundle/release/app-release.aab out/AI-Dentist-GooglePlay.aab

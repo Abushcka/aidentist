@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>AI Dentist</title>
+<style>
+  :root { --g: #16695a; --g2: #0f4f44; --bg: #f3f6f5; --tx: #14231f; --mut: #5d6f6a; --line: #d7e1de; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--g); font: 17px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; color: var(--tx); }
+  body { display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .hero { flex: 1 1 auto; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; padding: 32px 20px 24px; text-align: center; min-height: 220px; }
+  .hero img { width: 96px; height: 96px; border-radius: 22px; box-shadow: 0 8px 30px rgba(0,0,0,.18); }
+  .hero h1 { margin: 18px 0 4px; font-size: 28px; font-weight: 700; letter-spacing: -.3px; }
+  .hero p { margin: 0; opacity: .85; font-size: 15px; }
+  .sheet { background: var(--bg); border-radius: 22px 22px 0 0; padding: 24px 20px calc(20px + env(safe-area-inset-bottom)); margin-bottom: calc(-1 * env(safe-area-inset-bottom)); }
+  .sheet[hidden], [hidden] { display: none !important; }
+  label { display: block; font-size: 14px; color: var(--mut); margin: 0 0 8px 2px; }
+  input { width: 100%; font: inherit; font-size: 18px; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: #fff; color: var(--tx); outline: none; }
+  input:focus { border-color: var(--g); box-shadow: 0 0 0 3px rgba(22,105,90,.15); }
+  .hint { font-size: 13px; color: var(--mut); margin: 8px 2px 0; }
+  .err { color: #b3261e; font-size: 14px; margin: 10px 2px 0; }
+  button { width: 100%; font: inherit; font-weight: 600; padding: 15px; border-radius: 14px; border: 0; margin-top: 16px; background: var(--g); color: #fff; }
+  button:active { background: var(--g2); }
+  button.sec { background: transparent; color: var(--g); margin-top: 8px; }
+  .spin { width: 26px; height: 26px; border: 3px solid rgba(255,255,255,.35); border-top-color: #fff; border-radius: 50%; animation: r .8s linear infinite; margin: 22px auto 0; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .foot { text-align: center; font-size: 13px; color: var(--mut); margin-top: 18px; }
+  .foot a { color: var(--g); text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <img src="icon.png" alt="">
+    <h1>AI Dentist</h1>
+    <p id="sub">Стоматологическая CRM</p>
+    <div class="spin" id="spin" hidden></div>
+  </div>
+
+  <div class="sheet" id="opening" hidden>
+    <button class="sec" id="change" style="margin-top:0">Сменить клинику</button>
+  </div>
+
+  <div class="sheet" id="failed" hidden>
+    <div class="err" id="failMsg" style="margin-top:0"></div>
+    <button id="retry">Повторить</button>
+    <button class="sec" id="change2">Сменить клинику</button>
+  </div>
+
+  <form class="sheet" id="pick" hidden>
+    <label for="addr">Название или адрес вашей клиники</label>
+    <input id="addr" autocapitalize="none" autocorrect="off" autocomplete="off" spellcheck="false" inputmode="url" placeholder="например: stomatolog">
+    <div class="hint">Его выдаёт администратор AI Dentist. Можно ввести и полный адрес сайта панели.</div>
+    <div class="err" id="pickErr" hidden></div>
+    <button type="submit">Открыть</button>
+    <div class="foot">Хотите AI Dentist в свою клинику? <a href="https://wa.me/996501777010">Напишите нам</a></div>
+  </form>
+
+<script>
+  // Базовый домен для коротких названий: «stomatolog» → https://stomatolog.147-224-205-88.sslip.io
+  const BASE_DOMAIN = "147-224-205-88.sslip.io";
+
+  const N = window.AIDentistNative || null;
+  const $ = id => document.getElementById(id);
+  const q = new URLSearchParams(location.search);
+
+  function saved() {
+    try {
+      if (N && typeof N.getClinic === "function") return N.getClinic() || "";
+      if (N && N.clinic) return N.clinic;
+      return localStorage.getItem("clinic") || "";
+    } catch (e) { return ""; }
+  }
+  function openClinic(url) {
+    if (N && typeof N.setClinic === "function") N.setClinic(url);
+    else { try { localStorage.setItem("clinic", url); } catch (e) {} location.href = url; }
+  }
+  function normalize(v) {
+    v = (v || "").trim().toLowerCase().replace(/\s+/g, "");
+    if (!v) return null;
+    if (/^https?:\/\//.test(v)) { try { const u = new URL(v); return u.protocol === "https:" ? u.origin : null; } catch (e) { return null; } }
+    if (v.includes(".")) { try { return new URL("https://" + v).origin; } catch (e) { return null; } }
+    if (/^[a-z0-9][a-z0-9-]{0,40}$/.test(v)) return "https://" + v + "." + BASE_DOMAIN;
+    return null;
+  }
+  function host(url) { try { return new URL(url).host; } catch (e) { return url; } }
+  function shortName(url) { const h = host(url); return h.endsWith("." + BASE_DOMAIN) ? h.slice(0, -BASE_DOMAIN.length - 1) : h; }
+  function show(id) { ["opening", "failed", "pick"].forEach(s => $(s).hidden = s !== id); $("spin").hidden = id !== "opening"; }
+
+  let timer = null;
+  function showPick() {
+    clearTimeout(timer);
+    show("pick"); $("sub").textContent = "Выберите клинику";
+    const cur = saved(); if (cur) $("addr").value = shortName(cur);
+  }
+  $("change").onclick = showPick;
+  $("change2").onclick = showPick;
+  $("retry").onclick = () => { show("opening"); $("sub").textContent = "Открываем " + shortName(saved()) + "…"; openClinic(saved()); };
+  $("pick").onsubmit = e => {
+    e.preventDefault();
+    const url = normalize($("addr").value);
+    if (!url) { $("pickErr").textContent = "Проверьте название: латинские буквы, цифры и дефис, или адрес вида https://…"; $("pickErr").hidden = false; return; }
+    $("pickErr").hidden = true; show("opening"); $("sub").textContent = "Открываем " + shortName(url) + "…";
+    openClinic(url);
+  };
+
+  const cur = saved();
+  if (!cur || q.has("change")) showPick();
+  else if (q.has("error")) {
+    show("failed"); $("sub").textContent = shortName(cur);
+    $("failMsg").textContent = "Не удалось открыть клинику. Проверьте интернет и попробуйте ещё раз.";
+  } else {
+    show("opening"); $("sub").textContent = "Открываем " + shortName(cur) + "…";
+    timer = setTimeout(() => openClinic(cur), 700);
+  }
+</script>
+</body>
+</html>

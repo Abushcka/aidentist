@@ -1,0 +1,53 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Номер сборки приходит из GitHub Actions (run_number); локально — 1.
+def buildNum = (System.getenv('BUILD_NUMBER') ?: '1') as Integer
+def ksPath = System.getenv('KEYSTORE_PATH')
+
+android {
+    namespace 'kg.aidentist.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'kg.aidentist.app'
+        minSdk 24
+        targetSdk 35
+        versionCode buildNum
+        versionName "1.0.${buildNum}"
+    }
+
+    signingConfigs {
+        release {
+            if (ksPath) {
+                storeFile file(ksPath)
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS') ?: 'aidentist'
+                keyPassword System.getenv('KEY_PASSWORD') ?: System.getenv('KEYSTORE_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (ksPath) signingConfig signingConfigs.release
+        }
+    }
+
+    // Общий экран выбора клиники (тот же, что в iOS) — ../../shared/launcher
+    sourceSets {
+        main { assets.srcDirs += ['../../shared'] }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}

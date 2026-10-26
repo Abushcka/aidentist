@@ -1,0 +1,10 @@
+ios/AIDentist.xcodeproj/
+ios/build/
+ios/Payload/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+*.jks
+*.keystore
+.DS_Store

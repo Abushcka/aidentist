@@ -564,7 +564,7 @@ const statusPill = s => h("span", { class: `pill s-${s}` }, REF.statuses?.[s] ||
 // ================= API (сервер или демо) =================
 let DEMO = false, AUTH = "";
 let DEMO_ME = { uid: 0, role: "owner", name: "Главный администратор", doctor_id: null };
-const DEMO_CONTACT = "https://wa.me/996551011103?text=" + encodeURIComponent("Здравствуйте! Посмотрел демо AI Dentist, хочу подключить клинику");
+const DEMO_CONTACT = "https://wa.me/996501777010?text=" + encodeURIComponent("Здравствуйте! Посмотрел демо AI Dentist, хочу подключить клинику");
 async function api(method, path, body) {
   if (DEMO) return Mock.call(method, path, body);
   const r = await fetch(path, { method, headers: { "Content-Type": "application/json", Authorization: AUTH },
